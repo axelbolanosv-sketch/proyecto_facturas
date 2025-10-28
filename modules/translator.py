@@ -1,4 +1,4 @@
-# modules/translator.py
+# modules/translator.py (Actualizado)
 
 # Diccionario de traducciones
 LANGUAGES = {
@@ -19,7 +19,8 @@ LANGUAGES = {
         "remove_button": "Quitar",
         "clear_all_button": "Limpiar todos los filtros",
         "results_header": "Resultados ({num_filas} filas encontradas)",
-        "download_button": "Descargar resultados como JSON",
+        "download_json_button": "Descargar resultados como JSON", # Clave renombrada
+        "download_excel_button": "Descargar resultados como Excel", # <-- NUEVA CLAVE
         "error_critical": "Error Crítico al procesar el archivo: {e}",
         "error_corrupt": "El archivo puede estar corrupto o tener un formato inesperado.",
         "info_upload": "Por favor, cargue un archivo .xlsx para comenzar.",
@@ -45,7 +46,8 @@ LANGUAGES = {
         "remove_button": "Remove",
         "clear_all_button": "Clear All Filters",
         "results_header": "Results ({num_filas} rows found)",
-        "download_button": "Download results as JSON",
+        "download_json_button": "Download results as JSON", # Clave renombrada
+        "download_excel_button": "Download results as Excel", # <-- NUEVA CLAVE
         "error_critical": "Critical Error while processing file: {e}",
         "error_corrupt": "The file might be corrupt or in an unexpected format.",
         "info_upload": "Please upload an .xlsx file to begin.",

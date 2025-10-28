@@ -76,7 +76,7 @@ def main():
     monto_min = float(monto_min) if monto_min else None
 
     # Aplicar filtro dinámico
-    resultado = filtrar_facturas(
+    resultado = filtrar_facturas(   
         df,
         vendor_name=emisor,
         invoice_num=codigo,

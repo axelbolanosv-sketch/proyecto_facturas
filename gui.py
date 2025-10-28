@@ -1,7 +1,8 @@
-# gui.py (Versión Corporativa con Diseño Avanzado)
+# gui.py (Versión Corporativa con Descarga Excel)
 
 import streamlit as st
 import pandas as pd
+import io  # <-- AÑADIDO: Para manejar el archivo en memoria
 from modules.filters import aplicar_filtros_dinamicos
 from modules.translator import get_text
 
@@ -38,7 +39,8 @@ def load_custom_css():
             --color-texto-secundario: #5A6A7D;  /* Texto gris */
             --color-borde: #D0D9E3;             /* Borde sutil */
         }
-
+        /* ... (El resto de tu CSS de diseño se mantiene igual) ... */
+        
         /* --- Estructura Principal --- */
         .stApp {
             background-color: var(--color-fondo);
@@ -86,6 +88,7 @@ def load_custom_css():
             padding: 10px 15px;
             font-weight: 600;
             transition: 0.2s ease;
+            cursor: pointer;
         }
         .stButton > button:hover {
             background-color: var(--color-primario-rojo-hover);
@@ -167,16 +170,35 @@ def load_custom_css():
             color: var(--color-texto-secundario);
             border-radius: 8px;
         }
+        
+        /* Estilo del botón de descarga Excel (para que sea primario) */
+        .stButton[key*="download_excel"] > button {
+             /* Hereda el estilo primario (rojo) */
+        }
 
         </style>
         """,
         unsafe_allow_html=True
     )
 
-# --- 4. Cargar el CSS ---
+# --- 4. NUEVA FUNCIÓN AUXILIAR: Convertir a Excel ---
+@st.cache_data # Usamos cache para no regenerar el archivo si no cambian los datos
+def to_excel(df: pd.DataFrame):
+    """
+    Convierte un DataFrame a un archivo Excel en memoria (bytes).
+    """
+    output = io.BytesIO()
+    # Usamos 'with' para asegurar que el 'writer' se cierre correctamente
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Resultados')
+    # Obtenemos el valor en bytes del buffer
+    processed_data = output.getvalue()
+    return processed_data
+
+# --- 5. Cargar el CSS ---
 load_custom_css()
 
-# --- 5. Barra Lateral (Continuación) ---
+# --- 6. Barra Lateral (Continuación) ---
 lang_options = {"Español": "es", "English": "en"}
 lang_choice = st.sidebar.radio(
     label="Idioma / Language",
@@ -194,11 +216,11 @@ uploaded_file = st.sidebar.file_uploader(
     key="main_uploader"
 )
 
-# --- 6. Títulos Principales ---
+# --- 7. Títulos Principales ---
 st.markdown(f"<h1>🔎 {get_text(lang, 'title')}</h1>", unsafe_allow_html=True)
 st.write(get_text(lang, 'subtitle'))
 
-# --- 7. Área Principal (Lógica y Resultados) ---
+# --- 8. Área Principal (Lógica y Resultados) ---
 if uploaded_file is not None:
     try:
         if st.session_state.df_original is None:
@@ -236,7 +258,6 @@ if uploaded_file is not None:
         if not st.session_state.filtros_activos:
             st.info(get_text(lang, 'no_filters_applied'))
         else:
-            # Creamos un contenedor (tarjeta) para los filtros
             with st.container():
                 filtros_a_eliminar = -1
                 for i, filtro in enumerate(st.session_state.filtros_activos):
@@ -254,7 +275,6 @@ if uploaded_file is not None:
                     st.session_state.filtros_activos.pop(filtros_a_eliminar)
                     st.rerun()
                 
-                # Separador
                 st.markdown("---") 
                 
                 if st.button(get_text(lang, 'clear_all_button'), key="limpiar_todos"):
@@ -270,13 +290,29 @@ if uploaded_file is not None:
         st.markdown(f"## {get_text(lang, 'results_header').format(num_filas=len(resultado_df))}")
         st.dataframe(resultado_df)
         
-        # --- Descargar Resultados ---
+        # --- SECCIÓN DE DESCARGA (MODIFICADA) ---
+        
+        # 1. (OBJETIVO 2) Preparamos los datos JSON (la funcionalidad sigue ahí)
         json_resultado = resultado_df.to_json(orient="records", force_ascii=False, indent=4)
+        
+        # 2. (OBJETIVO 1) El botón de JSON está "comentado" (desaparece)
+        # st.download_button(
+        #     label=get_text(lang, 'download_json_button'),
+        #     data=json_resultado,
+        #     file_name="resultado_facturas.json",
+        #     mime="application/json",
+        #     key="download_json"
+        # )
+
+        # 3. (OBJETIVOS 3 y 4) Preparamos y mostramos el botón de Excel
+        excel_data = to_excel(resultado_df)
+        
         st.download_button(
-            label=get_text(lang, 'download_button'),
-            data=json_resultado,
-            file_name="resultado_facturas.json",
-            mime="application/json"
+            label=get_text(lang, 'download_excel_button'),
+            data=excel_data,
+            file_name="resultado_facturas.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_excel"
         )
 
     except Exception as e:
