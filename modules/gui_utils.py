@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN CON GUARDADO DOBLE)
+# modules/gui_utils.py (VERSIÓN CON MÁS COLORES)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -13,7 +13,6 @@ def initialize_session_state():
     
     Establece valores predeterminados para claves esenciales.
     
-    *** ACTUALIZACIÓN ***
     - 'df_pristine': Copia 100% original del archivo. No se toca.
     - 'df_original': Copia "Estable" (Archivo 1). Es el punto de restauración.
     - 'df_staging': Copia "Borrador" (Archivo 2). Es la que se usa y edita.
@@ -44,6 +43,9 @@ def load_custom_css():
     
     Inyecta un bloque <style> usando st.markdown para personalizar
     la apariencia de la aplicación.
+    
+    *** ACTUALIZACIÓN ***
+    - Añadidos estilos para los nuevos botones de guardado.
     """
     st.markdown(
         """
@@ -55,7 +57,6 @@ def load_custom_css():
             background-color: #FFF3B3 !important; /* Amarillo pálido */
         }
         
-        /* Regla de CSS para celdas que contienen solo '0' (nuestro placeholder numérico) */
         [data-testid="stDataEditor"] [data-kind="cell"] > .glide-cell-div > .glide-text-content[data-content="0"] {
             background-color: #FFF3B3 !important;
             color: #b0a06c; /* Color de texto más claro para el '0' */
@@ -70,6 +71,8 @@ def load_custom_css():
             --color-texto-principal: #0A1729;
             --color-texto-secundario: #5A6D;
             --color-borde: #D0D9E3;
+            --color-naranja: #FFA500;
+            --color-naranja-hover: #E69500;
         }
         .stApp { background-color: var(--color-fondo); color: var(--color-texto-principal); }
         [data-testid="stSidebar"] { background-color: var(--color-fondo-tarjeta); border-right: 1px solid var(--color-borde); box-shadow: 2px 0px 10px rgba(0,0,0,0.05); }
@@ -77,19 +80,33 @@ def load_custom_css():
         .stApp h2 { color: var(--color-primario-azul); border-bottom: 2px solid var(--color-borde); padding-bottom: 5px; }
         .stApp h3, [data_testid="stSidebar"] h3 { color: var(--color-texto-principal); font-weight: 600; }
         [data-testid="stSidebar"] h2 { color: var(--color-primario-azul); border-bottom: none; }
+        
+        /* Botón por defecto (rojo) - Usado para Guardar Borrador */
         .stButton > button { background-color: var(--color-primario-rojo); color: white; border: none; border-radius: 5px; padding: 10px 15px; font-weight: 600; transition: 0.2s ease; cursor: pointer; }
         .stButton > button:hover { background-color: var(--color-primario-rojo-hover); color: white; }
         .stButton > button:focus { box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.4); }
         
-        /* Botón de Guardar Estable (Confirmar) */
+        /* --- INICIO DE NUEVOS ESTILOS --- */
+
+        /* Botón de Guardar Estable (Confirmar) - Azul */
         .stButton[key*="commit_changes"] > button {
-            background-color: #004A99; /* Azul primario */
+            background-color: var(--color-primario-azul);
         }
         .stButton[key*="commit_changes"] > button:hover {
-            background-color: #003366;
+            background-color: #003366; /* Azul más oscuro */
         }
         
-        /* Botón de Restaurar Original (Peligro) */
+        /* Botón Revertir a Estable (Precaución) - Naranja */
+        .stButton[key*="reset_changes_button"] > button {
+            background-color: var(--color-naranja);
+            color: white;
+        }
+        .stButton[key*="reset_changes_button"] > button:hover {
+            background-color: var(--color-naranja-hover);
+            color: white;
+        }
+
+        /* Botón de Restaurar Original (Peligro) - Borde Rojo */
         .stButton[key*="restore_pristine"] > button {
             background-color: transparent;
             color: var(--color-primario-rojo);
@@ -97,7 +114,10 @@ def load_custom_css():
         }
         .stButton[key*="restore_pristine"] > button:hover {
             background-color: rgba(227, 6, 19, 0.05);
+            color: var(--color-primario-rojo-hover);
         }
+        
+        /* --- FIN DE NUEVOS ESTILOS --- */
 
         .stButton[key*="quitar_"] > button {
             background-color: #e0eaf3;
@@ -177,12 +197,6 @@ def load_and_process_files(uploaded_files, lang):
     """
     Toma los archivos cargados, los combina, limpia y guarda las 3 copias.
 
-    *** ACTUALIZACIÓN ***
-    - Al final, guarda tres copias en el estado:
-      1. 'df_pristine': (Archivo 0) Copia original.
-      2. 'df_original': (Archivo 1) Copia estable.
-      3. 'df_staging': (Archivo 2) Copia de borrador.
-
     Args:
         uploaded_files (list[UploadedFile]): Lista de archivos cargados.
         lang (str): El código de idioma actual (ej. 'es').
@@ -229,7 +243,7 @@ def load_and_process_files(uploaded_files, lang):
                 get_text(lang, 'status_complete')  
             )
 
-            # --- MODIFICACIÓN: GUARDAR LAS TRES COPIAS ---
+            # --- Guardar las tres copias ---
             st.session_state.df_pristine = df_processed.copy() # Archivo 0
             st.session_state.df_original = df_processed.copy() # Archivo 1
             st.session_state.df_staging = df_processed.copy()  # Archivo 2
@@ -239,7 +253,6 @@ def load_and_process_files(uploaded_files, lang):
     except Exception as e:
         st.error(get_text(lang, 'error_critical').format(e=e))
         st.warning(get_text(lang, 'error_corrupt'))
-        # Limpiar todo en caso de error
         st.session_state.df_pristine = None
         st.session_state.df_original = None
         st.session_state.df_staging = None
@@ -250,16 +263,13 @@ def load_and_process_files(uploaded_files, lang):
 def clear_state_and_prepare_reload():
     """
     Resetea el estado de la sesión al cargar nuevos archivos.
-    
-    *** ACTUALIZACIÓN ***
-    - Limpia las tres copias del DataFrame.
+    Limpia las tres copias del DataFrame.
     """
     st.session_state.filtros_activos = []
     st.session_state.columnas_visibles = None
     st.session_state.editor_state = None 
     st.session_state.current_view_hash = None
     
-    # --- NUEVA LÓGICA DE LIMPIEZA ---
     st.session_state.df_pristine = None
     st.session_state.df_original = None
     st.session_state.df_staging = None

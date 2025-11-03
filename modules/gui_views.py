@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN CON LÓGICA DE DOBLE GUARDADO Y CORRECCIÓN DE NAMEERROR)
+# modules/gui_views.py (VERSIÓN CON LÓGICA DE HOTKEYS CORREGIDA)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -7,6 +7,8 @@ import json
 import numpy as np
 from modules.translator import get_text, translate_column
 from modules.gui_utils import to_excel
+# --- 1. IMPORTACIÓN CORREGIDA ---
+import streamlit_hotkeys as hotkeys 
 
 # --- 1. RENDER FILTROS ACTIVOS ---
 def render_active_filters(lang):
@@ -87,6 +89,16 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         todas_las_columnas_en (list): Lista de todos los nombres de columnas EN.
     """
     
+    # --- 2. REGISTRAR LOS HOTKEYS (CON LA LLAMADA CORREGIDA) ---
+    # Llamamos a hotkeys.activate() para registrar los atajos
+    hotkeys.activate([
+        hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True, help="Guardar Borrador"),
+        hotkeys.hk("save_stable", "s", ctrl=True, shift=True, prevent_default=True, help="Guardar Estable"),
+        hotkeys.hk("revert_stable", "r", ctrl=True, prevent_default=True, help="Revertir a Estable"),
+    ],
+        key='main_hotkeys'
+    )
+
     if not st.session_state.columnas_visibles:
             st.warning(get_text(lang, 'visible_cols_warning'))
             return
@@ -98,33 +110,36 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         st.warning(get_text(lang, 'visible_cols_warning'))
         return
 
-    # --- INICIO DE LA CORRECCIÓN DEL NAMEERROR ---
-    # 'df_vista_detallada' almacena la vista filtrada con nombres de columna EN
-    # Esta es la variable que faltaba y causaba el NameError
     df_vista_detallada = resultado_df_filtrado[columnas_finales].copy()
     
-    # 'df_display' se basa en df_vista_detallada pero con nombres UI para el editor
     df_display = df_vista_detallada.copy()
     df_display.columns = [translate_column(lang, col) for col in df_display.columns]
-    # --- FIN DE LA CORRECCIÓN DEL NAMEERROR ---
     
     # --- Configuración de Columnas (Autorrellenado) ---
     configuracion_columnas = {}
+    
     columnas_autocompletar_en = [
         "Vendor Name", "Status", "Assignee", 
-        "Operating Unit Name", "Pay Status", "Document Type"
+        "Operating Unit Name", "Pay Status", "Document Type",
+        "Currency Code", "Vendor Type", "Payment Method", 
+        "Priority", "Pay Group"
     ]
     
     for col_en in columnas_autocompletar_en:
         if col_en in df_master_copy.columns:
             try:
-                opciones = sorted(df_master_copy[col_en].astype(str).unique())
+                opciones = []
+                if col_en == "Priority":
+                    opciones = ["", "Zero", "Low", "Medium", "High"]
+                else:
+                    opciones = sorted(df_master_copy[col_en].astype(str).unique())
+
                 col_ui = translate_column(lang, col_en)
                 configuracion_columnas[col_ui] = st.column_config.SelectboxColumn(
                     f"{col_ui} (Autocompletar)",
                     help=get_text(lang, 'autocomplete_help'),
                     options=opciones,
-                    required=False
+                    required=False 
                 )
             except Exception as e:
                 st.warning(f"No se pudo generar autorrellenado para '{col_en}': {e}")
@@ -170,63 +185,22 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             ignore_index=False 
         )
     
-    # --- Layout para los botones de control ---
-    st.markdown("#### Acciones del Editor")
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.button(
-            get_text(lang, 'add_row_button'),
-            on_click=callback_add_row,
-            use_container_width=True
-        )
-
-    # --- LÓGICA DE BOTÓN 1: Guardar Borrador (Actualiza Archivo 2) ---
-    with col2:
-        save_button_pressed = st.button(
-            get_text(lang, 'save_changes_button'),
-            use_container_width=True,
-            help=get_text(lang, 'save_changes_help'),
-            type="primary" 
-        )
-    
-    # --- LÓGICA DE BOTÓN 2: Guardar Estable (Actualiza Archivo 1 desde 2) ---
-    with col3:
-        commit_button_pressed = st.button(
-            get_text(lang, 'commit_changes_button'),
-            use_container_width=True,
-            help=get_text(lang, 'commit_changes_help'),
-            key="commit_changes" 
-        )
-        
-    # --- LÓGICA DE BOTÓN 3: Revertir a Estable (Actualiza Archivo 2 desde 1) ---
-    with col4:
-        if st.button(
-            get_text(lang, 'reset_changes_button'),
-            use_container_width=True,
-            help=get_text(lang, 'reset_changes_help')
-        ):
-            if st.session_state.df_original is not None:
-                st.session_state.df_staging = st.session_state.df_original.copy()
-            
-            st.session_state.editor_state = None
-            st.session_state.current_view_hash = None
-            st.rerun()
-
-    st.warning(get_text(lang, 'editor_info_help_add_row'))
-
     # --- El Widget Data Editor ---
     editor_return_value = st.data_editor(
         st.session_state.editor_state,
         column_config=configuracion_columnas, 
         num_rows="dynamic",
         width='stretch', 
-        height=600
+        height=600,
+        key="main_data_editor"
     )
-    
-    # --- LÓGICA DE GUARDADO (Botón 1: Guardar Borrador) ---
-    if save_button_pressed:
-        
+
+    # --- 3. DEFINICIÓN DE CALLBACKS DE ACCIÓN ---
+
+    def _callback_guardar_borrador():
+        """
+        (Ctrl+S) Guarda el estado del editor en 'df_staging' (Archivo 2).
+        """
         df_edited_view_ui = editor_return_value.copy()
         
         col_status_en = "Row Status"
@@ -253,6 +227,8 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         df_master_staging.update(existing_rows_en)
         df_master_staging = pd.concat([new_rows_en, df_master_staging])
         
+        df_master_staging = df_master_staging.sort_index(ascending=True)
+        
         st.session_state.df_staging = df_master_staging.copy()
         
         st.session_state.editor_state = df_edited_view_ui.copy()
@@ -260,19 +236,89 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         st.success(get_text(lang, 'save_success_message'))
         st.rerun()
 
-    # --- LÓGICA DE COMMIT (Botón 2: Guardar Estable) ---
-    if commit_button_pressed:
+    def _callback_guardar_estable():
+        """
+        (Ctrl+Shift+S) Copia 'df_staging' (Archivo 2) a 'df_original' (Archivo 1).
+        """
         st.session_state.df_original = st.session_state.df_staging.copy()
         st.success(get_text(lang, 'commit_success_message'))
+
+    def _callback_revertir_estable():
+        """
+        (Ctrl+R) Copia 'df_original' (Archivo 1) a 'df_staging' (Archivo 2).
+        """
+        if st.session_state.df_original is not None:
+            st.session_state.df_staging = st.session_state.df_original.copy()
+        
+        st.session_state.editor_state = None
+        st.session_state.current_view_hash = None
+        st.rerun()
+
+    # --- 4. RENDERIZADO DE BOTONES DE CONTROL ---
+    st.markdown("#### Acciones del Editor")
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.button(
+            get_text(lang, 'add_row_button'),
+            on_click=callback_add_row,
+            use_container_width=True
+        )
+
+    with col2:
+        save_button_pressed = st.button(
+            get_text(lang, 'save_changes_button'),
+            use_container_width=True,
+            help=get_text(lang, 'save_changes_help'),
+            type="primary" 
+        )
     
-    st.markdown("---")
+    with col3:
+        commit_button_pressed = st.button(
+            get_text(lang, 'commit_changes_button'),
+            use_container_width=True,
+            help=get_text(lang, 'commit_changes_help'),
+            key="commit_changes" 
+        )
+        
+    with col4:
+        revert_button_pressed = st.button(
+            get_text(lang, 'reset_changes_button'),
+            use_container_width=True,
+            help=get_text(lang, 'reset_changes_help'),
+            key="reset_changes_button"
+        )
+
+    st.warning(get_text(lang, 'editor_info_help_add_row'))
+
+    # --- 5. MANEJO DE EVENTOS (BOTONES Y HOTKEYS) ---
+    
+    if save_button_pressed:
+        _callback_guardar_borrador()
+
+    if commit_button_pressed:
+        _callback_guardar_estable()
+
+    if revert_button_pressed:
+        _callback_revertir_estable()
+
+    # --- Lógica de Hotkeys (CON LA LLAMADA CORREGIDA) ---
+    # Usamos hotkeys.pressed() para comprobar el ID del atajo
+    if hotkeys.pressed("save_draft", key='main_hotkeys'):
+        _callback_guardar_borrador()
+    elif hotkeys.pressed("save_stable", key='main_hotkeys'):
+        _callback_guardar_estable()
+    elif hotkeys.pressed("revert_stable", key='main_hotkeys'):
+        _callback_revertir_estable()
+    
     
     # --- Descargas y Restauración Original ---
+    st.markdown("---")
     col_dl1, col_dl2, col_restore = st.columns([0.3, 0.3, 0.4])
 
     with col_dl1:
-        # --- Descarga de datos EDITADOS (Borrador) ---
-        df_para_descargar_editado = st.session_state.editor_state.copy()
+        # Descarga de datos EDITADOS (Borrador)
+        df_para_descargar_editado = editor_return_value.copy()
         df_para_descargar_editado.columns = [
             col_map_ui_to_en.get(col_ui, col_ui) 
             for col_ui in df_para_descargar_editado.columns
@@ -288,10 +334,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         )
     
     with col_dl2:
-        # --- Descarga de datos FILTRADOS (Borrador) ---
-        
-        # --- CORRECCIÓN: Usar 'df_vista_detallada' ---
-        # Esta es la variable que definimos en la línea 126
+        # Descarga de datos FILTROS (Borrador)
         excel_data_filtrada = to_excel(df_vista_detallada)
         st.download_button(
             label=get_text(lang, 'download_excel_filtered_button'), 
@@ -302,7 +345,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             use_container_width=True
         )
 
-    # --- LÓGICA DE BOTÓN 4: Restaurar Archivo Original (Peligro) ---
+    # Botón 4: Restaurar Archivo Original (Peligro)
     with col_restore:
         if st.button(
             get_text(lang, 'restore_pristine_button'),
