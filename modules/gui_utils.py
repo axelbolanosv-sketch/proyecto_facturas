@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN CORREGIDA FINAL)
+# modules/gui_utils.py (VERSIÓN CON GUARDADO DOBLE)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -9,11 +9,17 @@ from modules.translator import get_text
 
 # --- 1. Inicializar el 'Session State' ---
 def initialize_session_state():
-    """Define el estado inicial de la sesión."""
+    """Define el estado inicial de la sesión de Streamlit.
+    
+    Establece valores predeterminados para claves esenciales.
+    
+    *** ACTUALIZACIÓN ***
+    - 'df_pristine': Copia 100% original del archivo. No se toca.
+    - 'df_original': Copia "Estable" (Archivo 1). Es el punto de restauración.
+    - 'df_staging': Copia "Borrador" (Archivo 2). Es la que se usa y edita.
+    """
     if 'filtros_activos' not in st.session_state:
         st.session_state.filtros_activos = []
-    if 'df_original' not in st.session_state:
-        st.session_state.df_original = None
     if 'language' not in st.session_state:
         st.session_state.language = 'es'
     if 'columnas_visibles' not in st.session_state:
@@ -22,10 +28,23 @@ def initialize_session_state():
         st.session_state.editor_state = None
     if 'current_view_hash' not in st.session_state:
         st.session_state.current_view_hash = None
+    
+    # --- NUEVA ARQUITECTURA DE DATOS ---
+    if 'df_pristine' not in st.session_state:
+        st.session_state.df_pristine = None # Archivo 0: Original
+    if 'df_original' not in st.session_state:
+        st.session_state.df_original = None # Archivo 1: Estable
+    if 'df_staging' not in st.session_state:
+        st.session_state.df_staging = None # Archivo 2: Borrador de trabajo
 
 # --- 2. FUNCIÓN DE DISEÑO (CSS) ---
 def load_custom_css():
-    """ Carga CSS personalizado y oculta spinner """
+    """
+    Carga CSS personalizado en la aplicación Streamlit.
+    
+    Inyecta un bloque <style> usando st.markdown para personalizar
+    la apariencia de la aplicación.
+    """
     st.markdown(
         """
         <style>
@@ -62,6 +81,24 @@ def load_custom_css():
         .stButton > button:hover { background-color: var(--color-primario-rojo-hover); color: white; }
         .stButton > button:focus { box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.4); }
         
+        /* Botón de Guardar Estable (Confirmar) */
+        .stButton[key*="commit_changes"] > button {
+            background-color: #004A99; /* Azul primario */
+        }
+        .stButton[key*="commit_changes"] > button:hover {
+            background-color: #003366;
+        }
+        
+        /* Botón de Restaurar Original (Peligro) */
+        .stButton[key*="restore_pristine"] > button {
+            background-color: transparent;
+            color: var(--color-primario-rojo);
+            border: 1px solid var(--color-primario-rojo);
+        }
+        .stButton[key*="restore_pristine"] > button:hover {
+            background-color: rgba(227, 6, 19, 0.05);
+        }
+
         .stButton[key*="quitar_"] > button {
             background-color: #e0eaf3;
             color: #004A99;
@@ -121,7 +158,14 @@ def load_custom_css():
 # --- 3. FUNCIÓN AUXILIAR: Convertir a Excel ---
 @st.cache_data
 def to_excel(df: pd.DataFrame):
-    """Convierte un DataFrame a un archivo Excel en memoria."""
+    """Convierte un DataFrame a un archivo Excel en memoria.
+    
+    Args:
+        df (pd.DataFrame): El DataFrame que se va a convertir.
+
+    Returns:
+        bytes: Los datos binarios del archivo Excel generado.
+    """
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Resultados')
@@ -131,8 +175,17 @@ def to_excel(df: pd.DataFrame):
 # --- 4. FUNCIÓN DE CARGA Y PROCESAMIENTO DE DATOS ---
 def load_and_process_files(uploaded_files, lang):
     """
-    Toma los archivos cargados, los combina, limpia y los guarda en 
-    el estado de la sesión.
+    Toma los archivos cargados, los combina, limpia y guarda las 3 copias.
+
+    *** ACTUALIZACIÓN ***
+    - Al final, guarda tres copias en el estado:
+      1. 'df_pristine': (Archivo 0) Copia original.
+      2. 'df_original': (Archivo 1) Copia estable.
+      3. 'df_staging': (Archivo 2) Copia de borrador.
+
+    Args:
+        uploaded_files (list[UploadedFile]): Lista de archivos cargados.
+        lang (str): El código de idioma actual (ej. 'es').
     """
     try:
         lista_de_dataframes = []
@@ -144,70 +197,69 @@ def load_and_process_files(uploaded_files, lang):
             lista_de_dataframes.append(df)
         
         with st.spinner("Combinando y limpiando archivos..."):
-            df_original = pd.concat(lista_de_dataframes, ignore_index=True)
-            df_original.columns = [col.strip() for col in df_original.columns]
+            df_processed = pd.concat(lista_de_dataframes, ignore_index=True)
             
-            columnas_originales = list(df_original.columns)
+            df_processed.columns = [col.strip() for col in df_processed.columns]
+            columnas_originales = list(df_processed.columns)
+            df_check = pd.DataFrame(index=df_processed.index)
 
-            for col in df_original.columns:
+            for col in columnas_originales:
+                col_data = df_processed[col] 
+
                 if 'Total' in col or 'Amount' in col or 'Age' in col or 'ID' in col or 'Number' in col:
-                    df_original[col] = pd.to_numeric(df_original[col], errors='coerce')
-                    df_original[col] = df_original[col].fillna(0) # Rellenar con 0 como placeholder
+                    col_data = pd.to_numeric(col_data, errors='coerce').fillna(0)
+                    df_check[col] = col_data.astype(str)
                 elif 'Date' in col:
-                    df_original[col] = pd.to_datetime(df_original[col], errors='coerce')
-                    df_original[col] = df_original[col].fillna(pd.NaT)
+                    col_data = pd.to_datetime(col_data, errors='coerce')
+                    check_data = col_data.astype(str).replace('NaT', '')
+                    df_check[col] = check_data
+                    col_data = check_data
                 else:
-                    df_original[col] = df_original[col].fillna("").astype(str)
+                    col_data = col_data.fillna("").astype(str)
+                    df_check[col] = col_data
+                
+                df_processed[col] = col_data 
             
-            # --- LÓGICA DE ESTADO DE FILA (MEJORADA) ---
-            
-            # 1. Crear máscara de celdas vacías
-            df_check = df_original[columnas_originales].copy()
-            
-            # Convertir columnas numéricas a string para la comprobación (el 0 es vacío)
-            for col in df_check.columns:
-                 if pd.api.types.is_numeric_dtype(df_check[col]):
-                    df_check[col] = df_check[col].astype(str)
-            
-            # Convertir fechas a string (NaT es vacío)
-            for col in df_check.columns:
-                 if pd.api.types.is_datetime64_any_dtype(df_check[col]):
-                    df_check[col] = df_check[col].astype(str).replace('NaT', '')
-
-            # Ahora todo es string. '0', '' y 'NaT' son vacíos.
-            blank_mask = (df_check == "") | (df_check == "0") | (df_check == "NaT")
-            
+            blank_mask = (df_check == "") | (df_check == "0")
             incomplete_rows = blank_mask.any(axis=1)
             
-            # 2. ARREGLO: Usar el nombre canónico "Row Status"
-            df_original['Row Status'] = np.where(
+            df_processed['Row Status'] = np.where(
                 incomplete_rows, 
-                get_text(lang, 'status_incomplete'), # "Fila Incompleta"
-                get_text(lang, 'status_complete')   # "Fila Completa"
+                get_text(lang, 'status_incomplete'),
+                get_text(lang, 'status_complete')  
             )
+
+            # --- MODIFICACIÓN: GUARDAR LAS TRES COPIAS ---
+            st.session_state.df_pristine = df_processed.copy() # Archivo 0
+            st.session_state.df_original = df_processed.copy() # Archivo 1
+            st.session_state.df_staging = df_processed.copy()  # Archivo 2
             
-            # --- FIN LÓGICA DE ESTADO ---
-
-            # Convertir columnas de fecha a string para el editor
-            for col in df_original.columns:
-                 if pd.api.types.is_datetime64_any_dtype(df_original[col]):
-                    df_original[col] = df_original[col].astype(str).replace('NaT', '')
-
-            st.session_state.df_original = df_original
-            st.session_state.columnas_visibles = list(df_original.columns)
+            st.session_state.columnas_visibles = list(df_processed.columns)
 
     except Exception as e:
         st.error(get_text(lang, 'error_critical').format(e=e))
         st.warning(get_text(lang, 'error_corrupt'))
+        # Limpiar todo en caso de error
+        st.session_state.df_pristine = None
         st.session_state.df_original = None
+        st.session_state.df_staging = None
         st.session_state.columnas_visibles = None
         st.session_state.filtros_activos = []
 
 # --- 5. CALLBACK PARA LIMPIAR ESTADO ---
 def clear_state_and_prepare_reload():
-    """Resetea el estado al cargar nuevos archivos."""
-    st.session_state.df_original = None
+    """
+    Resetea el estado de la sesión al cargar nuevos archivos.
+    
+    *** ACTUALIZACIÓN ***
+    - Limpia las tres copias del DataFrame.
+    """
     st.session_state.filtros_activos = []
     st.session_state.columnas_visibles = None
     st.session_state.editor_state = None 
     st.session_state.current_view_hash = None
+    
+    # --- NUEVA LÓGICA DE LIMPIEZA ---
+    st.session_state.df_pristine = None
+    st.session_state.df_original = None
+    st.session_state.df_staging = None

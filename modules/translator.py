@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN CORREGIDA FINAL)
+# modules/translator.py (VERSIÓN CON TEXTOS DE DOBLE GUARDADO)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -100,13 +100,23 @@ LANGUAGES = {
         
         'autocomplete_help': 'Seleccione un valor existente o escriba para filtrar. Esto ayuda a mantener la consistencia.',
         'editor_info_help': 'Está en modo de edición. Haga doble clic en una celda para modificarla. Puede añadir o eliminar filas usando los botones (+) y (x) al final.',
-        'reset_changes_button': 'Descartar cambios en la tabla',
-        'add_row_button': '➕ Añadir Fila al Principio',
-        'editor_info_help_add_row': '⚠️ Presione "Guardar Cambios" después de editar para actualizar el estado de las filas.',
         
+        # --- MODIFICACIÓN DE TEXTOS DE BOTONES ---
+        'reset_changes_button': 'Revertir a Estable',
+        'reset_changes_help': 'Descarta los cambios del borrador y restaura el último punto de guardado estable.',
+        'add_row_button': '➕ Añadir Fila',
+        'editor_info_help_add_row': '⚠️ Presione "Guardar Borrador" después de editar para actualizar el estado de las filas.',
+        'save_changes_button': 'Guardar Borrador',
+        'save_changes_help': 'Guarda los cambios en el borrador de trabajo. Los KPIs se actualizarán.',
+        'commit_changes_button': 'Guardar Estable',
+        'commit_changes_help': 'Guarda el borrador actual como el nuevo punto de restauración estable.',
+        'restore_pristine_button': 'Restaurar Original',
+        'restore_pristine_help': '¡PELIGRO! Borra TODOS los cambios (borrador y estable) y restaura los datos del archivo Excel original.',
+        'commit_success_message': '¡Punto de restauración estable guardado con éxito!',
+        # --- FIN DE MODIFICACIÓN ---
         
-        'download_excel_manual_edits_button': 'Descargar Datos MODIFICADOS (Excel)',
-        'download_excel_filtered_button': 'Descargar Datos FILTRADOS (Excel)',
+        'download_excel_manual_edits_button': 'Descargar Borrador Actual (Excel)',
+        'download_excel_filtered_button': 'Descargar Vista Filtrada (Excel)',
 
         # --- Claves de Estado de Fila (Nuevas) ---
         "status_incomplete": "Fila Incompleta",
@@ -116,10 +126,8 @@ LANGUAGES = {
         "search_text_help_default": "Escriba su búsqueda y presione 'Enter' o el botón 'Añadir'",
         "search_text_help_status": "Escriba 'Fila Completa' o 'Fila Incompleta' y presione 'Enter'",
 
-        # --- Claves del editor y guardado (Nuevas) ---
-        "save_changes_button": "Guardar Cambios y Actualizar Estado",
-        "editor_info_help_save": "Haga clic en 'Guardar' para actualizar el estado.",
-        "save_success_message": "¡Cambios guardados y estado actualizado con éxito!",
+        "editor_info_help_save": "Haga clic en 'Guardar Borrador' para actualizar el estado.",
+        "save_success_message": "¡Borrador guardado y estado actualizado con éxito!",
     },
     "en": {
         "title": "Dynamic Invoice Search",
@@ -173,13 +181,23 @@ LANGUAGES = {
         
         'autocomplete_help': 'Select an existing value or type to filter. This helps maintain consistency.',
         'editor_info_help': 'You are in edit mode. Double-click a cell to modify it. You can add or delete rows using the (+) and (x) buttons at the bottom.',
-        'reset_changes_button': 'Discard changes in table',
-        'add_row_button': '➕ Add Row to Top',
-        'editor_info_help_add_row': '⚠️ Press "Save Changes" after editing to update row status.',
         
+        # --- MODIFICACIÓN DE TEXTOS DE BOTONES ---
+        'reset_changes_button': 'Revert to Stable',
+        'reset_changes_help': 'Discards draft changes and restores the last stable save point.',
+        'add_row_button': '➕ Add Row',
+        'editor_info_help_add_row': '⚠️ Press "Save Draft" after editing to update row status.',
+        'save_changes_button': 'Save Draft',
+        'save_changes_help': 'Saves changes to the working draft. KPIs will update.',
+        'commit_changes_button': 'Save Stable',
+        'commit_changes_help': 'Saves the current draft as the new stable restore point.',
+        'restore_pristine_button': 'Restore Original File',
+        'restore_pristine_help': 'DANGER! Deletes ALL changes (draft and stable) and restores data from the original Excel file.',
+        'commit_success_message': 'Stable restore point saved successfully!',
+        # --- FIN DE MODIFICACIÓN ---
         
-        'download_excel_manual_edits_button': 'Download MODIFIED Data (Excel)',
-        'download_excel_filtered_button': 'Download FILTERED Data (Excel)',
+        'download_excel_manual_edits_button': 'Download Current Draft (Excel)',
+        'download_excel_filtered_button': 'Download Filtered View (Excel)',
         
         # --- Row Status Keys (New) ---
         "status_incomplete": "Row Incomplete",
@@ -190,9 +208,8 @@ LANGUAGES = {
         "search_text_help_status": "Type 'Row Complete' or 'Row Incomplete' and press 'Enter'",
 
         # --- Editor and Save Keys (New) ---
-        "save_changes_button": "Save Changes & Update Status",
-        "editor_info_help_save": "Click 'Save' to update row status.",
-        "save_success_message": "Changes saved and status updated successfully!",
+        "editor_info_help_save": "Click 'Save Draft' to update row status.",
+        "save_success_message": "Draft saved and status updated successfully!",
     }
 }
 
@@ -210,7 +227,4 @@ def translate_column(language, column_name):
     """
     if language == 'es':
         return COLUMN_TRANSLATIONS.get(column_name, column_name)
-    # Para 'en', o cualquier otro idioma, busca una traducción directa
-    # Si no, devuelve el nombre original.
-    # Esto permite que "Row Status" (en) no se traduzca, pero sí "Estado Fila" (es)
     return column_name
