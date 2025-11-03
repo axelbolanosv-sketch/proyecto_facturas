@@ -1,4 +1,4 @@
-# modules/translator.py (Actualizado con claves de descarga claras)
+# modules/translator.py (VERSIÓN CORREGIDA FINAL)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -40,8 +40,10 @@ COLUMN_TRANSLATIONS = {
     "Payment Terms": "Términos de Pago",
     "Vendor Type": "Tipo de Proveedor",
     "Matching Status": "Estado de Cruce",
-    "Batch Matching Date": "Fecha Cruce (Lote)"
+    "Batch Matching Date": "Fecha Cruce (Lote)",
     
+    # --- Clave nueva para el estado de la fila ---
+    "Row Status": "Estado Fila"
 }
 
 # --- DICCIONARIO DE TEXTOS DE LA UI ---
@@ -99,18 +101,25 @@ LANGUAGES = {
         'autocomplete_help': 'Seleccione un valor existente o escriba para filtrar. Esto ayuda a mantener la consistencia.',
         'editor_info_help': 'Está en modo de edición. Haga doble clic en una celda para modificarla. Puede añadir o eliminar filas usando los botones (+) y (x) al final.',
         'reset_changes_button': 'Descartar cambios en la tabla',
-        'add_row_button': '➕ Añadir  Fila al Principio',
-        'editor_info_help_add_row': 'Haga clic en "Añadir Fila" para insertar una nueva fila en la parte superior. También puede editar o borrar filas existentes.',
+        'add_row_button': '➕ Añadir Fila al Principio',
+        'editor_info_help_add_row': '⚠️ Presione "Guardar Cambios" después de editar para actualizar el estado de las filas.',
         
-        # ###############################################################
-        # ############# INICIO DE LA SOLUCIÓN (Etiquetas Claras) ########
-        # ###############################################################
-        # (Claves antiguas eliminadas/renombradas)
+        
         'download_excel_manual_edits_button': 'Descargar Datos MODIFICADOS (Excel)',
         'download_excel_filtered_button': 'Descargar Datos FILTRADOS (Excel)',
-        # ###############################################################
-        # ############# FIN DE LA SOLUCIÓN #############################
-        # ###############################################################
+
+        # --- Claves de Estado de Fila (Nuevas) ---
+        "status_incomplete": "Fila Incompleta",
+        "status_complete": "Fila Completa",
+        "search_text_placeholder_default": "Escriba su búsqueda...",
+        "search_text_placeholder_status": "Ej: Fila Completa",
+        "search_text_help_default": "Escriba su búsqueda y presione 'Enter' o el botón 'Añadir'",
+        "search_text_help_status": "Escriba 'Fila Completa' o 'Fila Incompleta' y presione 'Enter'",
+
+        # --- Claves del editor y guardado (Nuevas) ---
+        "save_changes_button": "Guardar Cambios y Actualizar Estado",
+        "editor_info_help_save": "Haga clic en 'Guardar' para actualizar el estado.",
+        "save_success_message": "¡Cambios guardados y estado actualizado con éxito!",
     },
     "en": {
         "title": "Dynamic Invoice Search",
@@ -166,24 +175,31 @@ LANGUAGES = {
         'editor_info_help': 'You are in edit mode. Double-click a cell to modify it. You can add or delete rows using the (+) and (x) buttons at the bottom.',
         'reset_changes_button': 'Discard changes in table',
         'add_row_button': '➕ Add Row to Top',
-        'editor_info_help_add_row': 'Click "Add Row" to insert a new row at the top. You can also edit or delete existing rows.',
+        'editor_info_help_add_row': '⚠️ Press "Save Changes" after editing to update row status.',
         
-        # ###############################################################
-        # ############# INICIO DE LA SOLUCIÓN (Etiquetas Claras) ########
-        # ###############################################################
-        # (Claves antiguas eliminadas/renombradas)
+        
         'download_excel_manual_edits_button': 'Download MODIFIED Data (Excel)',
         'download_excel_filtered_button': 'Download FILTERED Data (Excel)',
-        # ###############################################################
-        # ############# FIN DE LA SOLUCIÓN #############################
-        # ###############################################################
+        
+        # --- Row Status Keys (New) ---
+        "status_incomplete": "Row Incomplete",
+        "status_complete": "Row Complete",
+        "search_text_placeholder_default": "Type your search...",
+        "search_text_placeholder_status": "Ej: Row Complete",
+        "search_text_help_default": "Type your search and press 'Enter' or the 'Add' button",
+        "search_text_help_status": "Type 'Row Complete' or 'Row Incomplete' and press 'Enter'",
+
+        # --- Editor and Save Keys (New) ---
+        "save_changes_button": "Save Changes & Update Status",
+        "editor_info_help_save": "Click 'Save' to update row status.",
+        "save_success_message": "Changes saved and status updated successfully!",
     }
 }
 
 def get_text(language, key):
     """
     Obtiene el texto traducido de la UI.
-    Si no se encuentra la clave, devuelve la clave misma (lo que causa el bug visual).
+    Si no se encuentra la clave, devuelve la clave misma.
     """
     return LANGUAGES.get(language, {}).get(key, key)
 
@@ -194,4 +210,7 @@ def translate_column(language, column_name):
     """
     if language == 'es':
         return COLUMN_TRANSLATIONS.get(column_name, column_name)
+    # Para 'en', o cualquier otro idioma, busca una traducción directa
+    # Si no, devuelve el nombre original.
+    # Esto permite que "Row Status" (en) no se traduzca, pero sí "Estado Fila" (es)
     return column_name

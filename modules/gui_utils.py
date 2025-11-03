@@ -1,9 +1,10 @@
-# modules/gui_utils.py (VERSIÓN LIMPIA)
+# modules/gui_utils.py (VERSIÓN CORREGIDA FINAL)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
 import pandas as pd
 import io
+import numpy as np 
 from modules.translator import get_text
 
 # --- 1. Inicializar el 'Session State' ---
@@ -25,11 +26,22 @@ def initialize_session_state():
 # --- 2. FUNCIÓN DE DISEÑO (CSS) ---
 def load_custom_css():
     """ Carga CSS personalizado y oculta spinner """
-    # Esta es la parte del CSS original de tu archivo gui.py
     st.markdown(
         """
         <style>
-        /* ... (CSS principal) ... */
+        /* ... (Tu CSS principal) ... */
+        
+        /* --- CSS PARA RESALTAR CELDAS VACÍAS --- */
+        [data-testid="stDataEditor"] [data-kind="cell"]:has(> .glide-cell-div:empty) {
+            background-color: #FFF3B3 !important; /* Amarillo pálido */
+        }
+        
+        /* Regla de CSS para celdas que contienen solo '0' (nuestro placeholder numérico) */
+        [data-testid="stDataEditor"] [data-kind="cell"] > .glide-cell-div > .glide-text-content[data-content="0"] {
+            background-color: #FFF3B3 !important;
+            color: #b0a06c; /* Color de texto más claro para el '0' */
+        }
+
         :root {
             --color-primario-azul: #004A99;
             --color-primario-rojo: #E30613;
@@ -88,16 +100,9 @@ def load_custom_css():
         
         .stAlert[data-testid="stInfo"] { background-color: var(--color-fondo-tarjeta); border: 1px dashed var(--color-borde); color: var(--color-texto-secundario); border-radius: 8px; }
         
-        /* Regla explícita para forzar el estilo rojo en los botones de descarga */
         .stButton[key*="download_excel"] > button {
             background-color: var(--color-primario-rojo);
             color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 10px 15px;
-            font-weight: 600;
-            transition: 0.2s ease;
-            cursor: pointer;
         }
         .stButton[key*="download_excel"] > button:hover {
             background-color: var(--color-primario-rojo-hover);
@@ -141,18 +146,53 @@ def load_and_process_files(uploaded_files, lang):
         with st.spinner("Combinando y limpiando archivos..."):
             df_original = pd.concat(lista_de_dataframes, ignore_index=True)
             df_original.columns = [col.strip() for col in df_original.columns]
+            
+            columnas_originales = list(df_original.columns)
 
             for col in df_original.columns:
                 if 'Total' in col or 'Amount' in col or 'Age' in col or 'ID' in col or 'Number' in col:
                     df_original[col] = pd.to_numeric(df_original[col], errors='coerce')
-                    df_original[col] = df_original[col].fillna(0)
+                    df_original[col] = df_original[col].fillna(0) # Rellenar con 0 como placeholder
                 elif 'Date' in col:
                     df_original[col] = pd.to_datetime(df_original[col], errors='coerce')
-                    df_original[col] = df_original[col].fillna("").astype(str)
-                    df_original[col] = df_original[col].replace('NaT', '')
+                    df_original[col] = df_original[col].fillna(pd.NaT)
                 else:
                     df_original[col] = df_original[col].fillna("").astype(str)
             
+            # --- LÓGICA DE ESTADO DE FILA (MEJORADA) ---
+            
+            # 1. Crear máscara de celdas vacías
+            df_check = df_original[columnas_originales].copy()
+            
+            # Convertir columnas numéricas a string para la comprobación (el 0 es vacío)
+            for col in df_check.columns:
+                 if pd.api.types.is_numeric_dtype(df_check[col]):
+                    df_check[col] = df_check[col].astype(str)
+            
+            # Convertir fechas a string (NaT es vacío)
+            for col in df_check.columns:
+                 if pd.api.types.is_datetime64_any_dtype(df_check[col]):
+                    df_check[col] = df_check[col].astype(str).replace('NaT', '')
+
+            # Ahora todo es string. '0', '' y 'NaT' son vacíos.
+            blank_mask = (df_check == "") | (df_check == "0") | (df_check == "NaT")
+            
+            incomplete_rows = blank_mask.any(axis=1)
+            
+            # 2. ARREGLO: Usar el nombre canónico "Row Status"
+            df_original['Row Status'] = np.where(
+                incomplete_rows, 
+                get_text(lang, 'status_incomplete'), # "Fila Incompleta"
+                get_text(lang, 'status_complete')   # "Fila Completa"
+            )
+            
+            # --- FIN LÓGICA DE ESTADO ---
+
+            # Convertir columnas de fecha a string para el editor
+            for col in df_original.columns:
+                 if pd.api.types.is_datetime64_any_dtype(df_original[col]):
+                    df_original[col] = df_original[col].astype(str).replace('NaT', '')
+
             st.session_state.df_original = df_original
             st.session_state.columnas_visibles = list(df_original.columns)
 

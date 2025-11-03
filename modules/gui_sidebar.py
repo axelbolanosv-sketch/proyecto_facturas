@@ -1,4 +1,4 @@
-# modules/gui_sidebar.py (VERSIÓN LIMPIA)
+# modules/gui_sidebar.py (VERSIÓN ACTUALIZADA)
 # Contiene toda la lógica para renderizar la barra lateral.
 
 import streamlit as st
@@ -59,10 +59,25 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 options=lista_columnas_ui,
                 key='filter_col_select'
             )
+            
+            # --- INICIO: LÓGICA DE AYUDA DE FILTRO ---
+            col_estado_traducida = translate_column(lang, "_row_status")
+            placeholder_default = get_text(lang, 'search_text_placeholder_default')
+            help_default = get_text(lang, 'search_text_help_default')
+            
+            if columna_seleccionada_ui == col_estado_traducida:
+                placeholder_text = get_text(lang, 'search_text_placeholder_status')
+                help_text = get_text(lang, 'search_text_help_status')
+            else:
+                placeholder_text = placeholder_default
+                help_text = help_default
+            # --- FIN: LÓGICA DE AYUDA DE FILTRO ---
+
             valor_a_buscar = st.text_input(
                 get_text(lang, 'search_text'),
                 key='filter_val_input',
-                help="Escriba su búsqueda y presione 'Enter' o el botón 'Añadir'"
+                placeholder=placeholder_text,
+                help=help_text
             )
             
             submitted = st.form_submit_button(

@@ -1,0 +1,45 @@
+# --- Entorno Virtual de Python ---
+# Ignora la carpeta del entorno virtual (ej. "venv")
+/venv/
+
+# --- Archivos de Entorno "Sueltos" (Para limpiar tu repo actual) ---
+# Estos son los archivos que tenías en la raíz y que deben ser ignorados
+*.exe
+*.bat
+*.ps1
+/activate
+/pyvenv.cfg
+
+# --- Archivos compilados de Python ---
+# Ignora las carpetas de caché
+__pycache__/
+# Ignora los archivos de Python compilados
+*.pyc
+*.pyo
+*.pyd
+
+# --- Archivos de Salida Generados ---
+# Ignora los archivos JSON o CSV generados por tus scripts
+*.json
+*.csv
+# Si decides volver a crear la carpeta /data, pero quieres que esté vacía
+/data/
+
+# --- Archivos del Sistema Operativo ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+desktop.ini
+
+# --- Archivos de IDEs (Editores de Código) ---
+# Visual Studio Code
+.vscode/
+# PyCharm
+.idea/
