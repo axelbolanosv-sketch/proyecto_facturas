@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN CON LÓGICA DE HOTKEYS CORREGIDA)
+# modules/gui_views.py (VERSIÓN CON HASH DE IDIOMA CORREGIDO)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -7,16 +7,11 @@ import json
 import numpy as np
 from modules.translator import get_text, translate_column
 from modules.gui_utils import to_excel
-# --- 1. IMPORTACIÓN CORREGIDA ---
 import streamlit_hotkeys as hotkeys 
 
 # --- 1. RENDER FILTROS ACTIVOS ---
 def render_active_filters(lang):
-    """Muestra los filtros activos y permite eliminarlos.
-
-    Args:
-        lang (str): El código de idioma actual (ej. 'es') para la traducción.
-    """
+    """Muestra los filtros activos y permite eliminarlos. (Sin cambios)"""
     st.markdown(f"## {get_text(lang, 'active_filters_header')}")
     
     if not st.session_state.filtros_activos:
@@ -46,12 +41,7 @@ def render_active_filters(lang):
 
 # --- 2. RENDER KPIS ---
 def render_kpi_dashboard(lang, resultado_df):
-    """Muestra el dashboard de KPIs.
-
-    Args:
-        lang (str): El código de idioma actual (ej. 'es') para la traducción.
-        resultado_df (pd.DataFrame): El DataFrame filtrado (del 'staging').
-    """
+    """Muestra el dashboard de KPIs. (Sin cambios)"""
     st.markdown(f"## {get_text(lang, 'kpi_header')}")
     
     try:
@@ -78,6 +68,7 @@ def render_kpi_dashboard(lang, resultado_df):
     )
 
 # --- 3. RENDER VISTA DETALLADA (EDITOR) ---
+# --- CORRECCIÓN: Firma de función actualizada ---
 def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui_to_en, todas_las_columnas_en):
     """Muestra la vista detallada con el editor de datos y botones de descarga.
 
@@ -85,12 +76,10 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         lang (str): El código de idioma actual (ej. 'es').
         resultado_df_filtrado (pd.DataFrame): El DF 'staging' ya filtrado.
         df_master_copy (pd.DataFrame): La copia completa de 'st.session_state.df_staging'.
-        col_map_ui_to_en (dict): Mapeo de nombres UI -> nombres EN.
+        col_map_ui_to_en (dict): Mapeo de nombres UI -> nombres EN (CORREGIDO).
         todas_las_columnas_en (list): Lista de todos los nombres de columnas EN.
     """
     
-    # --- 2. REGISTRAR LOS HOTKEYS (CON LA LLAMADA CORREGIDA) ---
-    # Llamamos a hotkeys.activate() para registrar los atajos
     hotkeys.activate([
         hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True, help="Guardar Borrador"),
         hotkeys.hk("save_stable", "s", ctrl=True, shift=True, prevent_default=True, help="Guardar Estable"),
@@ -113,6 +102,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     df_vista_detallada = resultado_df_filtrado[columnas_finales].copy()
     
     df_display = df_vista_detallada.copy()
+    # Los encabezados se traducen usando el 'lang' actual
     df_display.columns = [translate_column(lang, col) for col in df_display.columns]
     
     # --- Configuración de Columnas (Autorrellenado) ---
@@ -134,7 +124,12 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                 else:
                     opciones = sorted(df_master_copy[col_en].astype(str).unique())
 
+                # --- CORRECCIÓN (BUG 4) ---
+                # Traduce el nombre EN al nombre UI actual
                 col_ui = translate_column(lang, col_en)
+                
+                # Aplica la configuración a la columna con el nombre UI
+                # Esto ahora funciona en inglés Y español
                 configuracion_columnas[col_ui] = st.column_config.SelectboxColumn(
                     f"{col_ui} (Autocompletar)",
                     help=get_text(lang, 'autocomplete_help'),
@@ -147,12 +142,17 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     # --- Lógica de Hash Estable ---
     filtros_json_string = json.dumps(st.session_state.filtros_activos, sort_keys=True)
     columnas_tuple = tuple(st.session_state.columnas_visibles)
-    current_view_hash = hash((filtros_json_string, columnas_tuple))
+    
+    # --- CORRECCIÓN (BUGS 1 y 3) ---
+    # Añadimos el idioma al hash. Si el idioma cambia, el hash cambia.
+    current_view_hash = hash((filtros_json_string, columnas_tuple, st.session_state.language))
 
     # --- Lógica de Estado ---
     if 'editor_state' not in st.session_state or \
         st.session_state.current_view_hash != current_view_hash:
         
+        # Si el hash es diferente (ej. cambió el idioma),
+        # recargamos el editor_state desde df_display (que tiene los encabezados traducidos)
         st.session_state.editor_state = df_display.copy() 
         st.session_state.current_view_hash = current_view_hash
     
@@ -171,7 +171,8 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
         default_values = {}
         for col in df_editado.columns:
-            col_en = col_map_ui_to_en.get(col, col)
+            # El mapa 'col_map_ui_to_en' ahora es correcto para cualquier idioma
+            col_en = col_map_ui_to_en.get(col, col) 
             col_original_dtype = df_master_copy[col_en].dtype if col_en in df_master_copy.columns else 'object'
             if pd.api.types.is_numeric_dtype(col_original_dtype):
                 default_values[col] = 0
@@ -217,6 +218,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             )
         
         df_to_merge_en = df_edited_view_ui.copy()
+        # El mapa 'col_map_ui_to_en' ahora es correcto
         df_to_merge_en.columns = [col_map_ui_to_en.get(col_ui, col_ui) for col_ui in df_to_merge_en.columns]
 
         df_master_staging = st.session_state.df_staging.copy()
@@ -296,18 +298,16 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     if save_button_pressed:
         _callback_guardar_borrador()
 
-    if commit_button_pressed:
+    elif commit_button_pressed:
         _callback_guardar_estable()
 
-    if revert_button_pressed:
+    elif revert_button_pressed:
         _callback_revertir_estable()
 
-    # --- Lógica de Hotkeys (CON LA LLAMADA CORREGIDA) ---
-    # Usamos hotkeys.pressed() para comprobar el ID del atajo
-    if hotkeys.pressed("save_draft", key='main_hotkeys'):
-        _callback_guardar_borrador()
     elif hotkeys.pressed("save_stable", key='main_hotkeys'):
         _callback_guardar_estable()
+    elif hotkeys.pressed("save_draft", key='main_hotkeys'):
+        _callback_guardar_borrador()
     elif hotkeys.pressed("revert_stable", key='main_hotkeys'):
         _callback_revertir_estable()
     
@@ -334,7 +334,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         )
     
     with col_dl2:
-        # Descarga de datos FILTROS (Borrador)
+        # Descarga de datos FILTRADOS (Borrador)
         excel_data_filtrada = to_excel(df_vista_detallada)
         st.download_button(
             label=get_text(lang, 'download_excel_filtered_button'), 
@@ -363,13 +363,14 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
 
 # --- 4. RENDER VISTA AGRUPADA ---
-def render_grouped_view(lang, resultado_df, col_map_es_to_en, todas_las_columnas_en):
+# --- CORRECCIÓN: Firma de función actualizada ---
+def render_grouped_view(lang, resultado_df, col_map_ui_to_en, todas_las_columnas_en):
     """Muestra la vista de análisis agrupado.
 
     Args:
         lang (str): El código de idioma actual (ej. 'es').
         resultado_df (pd.DataFrame): El DataFrame filtrado (del 'staging').
-        col_map_es_to_en (dict): Mapeo de nombres ES -> nombres EN.
+        col_map_ui_to_en (dict): Mapeo de nombres UI -> nombres EN (CORREGIDO).
         todas_las_columnas_en (list): Lista de todos los nombres de columnas EN.
     """
     
@@ -394,7 +395,8 @@ def render_grouped_view(lang, resultado_df, col_map_es_to_en, todas_las_columnas
     )
     
     if col_para_agrupar_ui:
-        col_para_agrupar_en = col_map_es_to_en.get(col_para_agrupar_ui, col_para_agrupar_ui)
+        # El mapa 'col_map_ui_to_en' ahora es correcto
+        col_para_agrupar_en = col_map_ui_to_en.get(col_para_agrupar_ui, col_para_agrupar_ui)
         df_agrupado = resultado_df.copy()
         
         if 'Total' in df_agrupado.columns:
