@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN CON MÁS COLORES)
+# modules/gui_utils.py (VERSIÓN FINAL COMPLETA)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -9,14 +9,7 @@ from modules.translator import get_text
 
 # --- 1. Inicializar el 'Session State' ---
 def initialize_session_state():
-    """Define el estado inicial de la sesión de Streamlit.
-    
-    Establece valores predeterminados para claves esenciales.
-    
-    - 'df_pristine': Copia 100% original del archivo. No se toca.
-    - 'df_original': Copia "Estable" (Archivo 1). Es el punto de restauración.
-    - 'df_staging': Copia "Borrador" (Archivo 2). Es la que se usa y edita.
-    """
+    """Define el estado inicial de la sesión de Streamlit."""
     if 'filtros_activos' not in st.session_state:
         st.session_state.filtros_activos = []
     if 'language' not in st.session_state:
@@ -35,23 +28,19 @@ def initialize_session_state():
         st.session_state.df_original = None # Archivo 1: Estable
     if 'df_staging' not in st.session_state:
         st.session_state.df_staging = None # Archivo 2: Borrador de trabajo
+        
+    # --- Pre-cálculo de opciones ---
+    if 'autocomplete_options' not in st.session_state:
+        st.session_state.autocomplete_options = {}
 
 # --- 2. FUNCIÓN DE DISEÑO (CSS) ---
 def load_custom_css():
     """
     Carga CSS personalizado en la aplicación Streamlit.
-    
-    Inyecta un bloque <style> usando st.markdown para personalizar
-    la apariencia de la aplicación.
-    
-    *** ACTUALIZACIÓN ***
-    - Añadidos estilos para los nuevos botones de guardado.
     """
     st.markdown(
         """
         <style>
-        /* ... (Tu CSS principal) ... */
-        
         /* --- CSS PARA RESALTAR CELDAS VACÍAS --- */
         [data-testid="stDataEditor"] [data-kind="cell"]:has(> .glide-cell-div:empty) {
             background-color: #FFF3B3 !important; /* Amarillo pálido */
@@ -73,6 +62,10 @@ def load_custom_css():
             --color-borde: #D0D9E3;
             --color-naranja: #FFA500;
             --color-naranja-hover: #E69500;
+            
+            /* --- Color Verde para Descargas --- */
+            --color-verde: #008000; /* Verde para descargas */
+            --color-verde-hover: #006400; /* Verde oscuro */
         }
         .stApp { background-color: var(--color-fondo); color: var(--color-texto-principal); }
         [data-testid="stSidebar"] { background-color: var(--color-fondo-tarjeta); border-right: 1px solid var(--color-borde); box-shadow: 2px 0px 10px rgba(0,0,0,0.05); }
@@ -86,8 +79,6 @@ def load_custom_css():
         .stButton > button:hover { background-color: var(--color-primario-rojo-hover); color: white; }
         .stButton > button:focus { box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.4); }
         
-        /* --- INICIO DE NUEVOS ESTILOS --- */
-
         /* Botón de Guardar Estable (Confirmar) - Azul */
         .stButton[key*="commit_changes"] > button {
             background-color: var(--color-primario-azul);
@@ -116,8 +107,6 @@ def load_custom_css():
             background-color: rgba(227, 6, 19, 0.05);
             color: var(--color-primario-rojo-hover);
         }
-        
-        /* --- FIN DE NUEVOS ESTILOS --- */
 
         .stButton[key*="quitar_"] > button {
             background-color: #e0eaf3;
@@ -157,13 +146,23 @@ def load_custom_css():
         
         .stAlert[data-testid="stInfo"] { background-color: var(--color-fondo-tarjeta); border: 1px dashed var(--color-borde); color: var(--color-texto-secundario); border-radius: 8px; }
         
-        .stButton[key*="download_excel"] > button {
-            background-color: var(--color-primario-rojo);
+        /* --- Selector CSS corregido para stDownloadButton --- */
+        [data-testid="stDownloadButton"] > button {
+            background-color: var(--color-verde);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 15px;
+            font-weight: 600;
+            transition: 0.2s ease;
+            cursor: pointer;
+        }
+        [data-testid="stDownloadButton"] > button:hover {
+            background-color: var(--color-verde-hover);
             color: white;
         }
-        .stButton[key*="download_excel"] > button:hover {
-            background-color: var(--color-primario-rojo-hover);
-            color: white;
+        [data-testid="stDownloadButton"] > button:focus {
+            box-shadow: 0 0 0 3px rgba(0, 128, 0, 0.4);
         }
         
         .stButton[key*="toggle_cols"] > button { background-color: transparent; color: var(--color-primario-azul); border: 1px solid var(--color-primario-azul); }
@@ -178,14 +177,7 @@ def load_custom_css():
 # --- 3. FUNCIÓN AUXILIAR: Convertir a Excel ---
 @st.cache_data
 def to_excel(df: pd.DataFrame):
-    """Convierte un DataFrame a un archivo Excel en memoria.
-    
-    Args:
-        df (pd.DataFrame): El DataFrame que se va a convertir.
-
-    Returns:
-        bytes: Los datos binarios del archivo Excel generado.
-    """
+    """Convierte un DataFrame a un archivo Excel en memoria."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Resultados')
@@ -195,11 +187,8 @@ def to_excel(df: pd.DataFrame):
 # --- 4. FUNCIÓN DE CARGA Y PROCESAMIENTO DE DATOS ---
 def load_and_process_files(uploaded_files, lang):
     """
-    Toma los archivos cargados, los combina, limpia y guarda las 3 copias.
-
-    Args:
-        uploaded_files (list[UploadedFile]): Lista de archivos cargados.
-        lang (str): El código de idioma actual (ej. 'es').
+    Toma los archivos cargados, los combina, limpia, guarda las 3 copias
+    y pre-calcula las opciones de autocompletar.
     """
     try:
         lista_de_dataframes = []
@@ -248,6 +237,28 @@ def load_and_process_files(uploaded_files, lang):
             st.session_state.df_original = df_processed.copy() # Archivo 1
             st.session_state.df_staging = df_processed.copy()  # Archivo 2
             
+            # --- Pre-calcular opciones de autocompletar ---
+            autocomplete_options = {}
+            columnas_autocompletar_en = [
+                "Vendor Name", "Status", "Assignee", 
+                "Operating Unit Name", "Pay Status", "Document Type",
+                "Currency Code", "Vendor Type", "Payment Method", 
+                "Priority", "Pay Group"
+            ]
+            
+            for col_en in columnas_autocompletar_en:
+                if col_en in df_processed.columns:
+                    try:
+                        if col_en == "Priority":
+                            opciones = ["", "Zero", "Low", "Medium", "High"]
+                        else:
+                            opciones = sorted(df_processed[col_en].astype(str).unique())
+                        autocomplete_options[col_en] = opciones
+                    except Exception:
+                        autocomplete_options[col_en] = [] # Fallback
+            
+            st.session_state.autocomplete_options = autocomplete_options
+            
             st.session_state.columnas_visibles = list(df_processed.columns)
 
     except Exception as e:
@@ -258,6 +269,7 @@ def load_and_process_files(uploaded_files, lang):
         st.session_state.df_staging = None
         st.session_state.columnas_visibles = None
         st.session_state.filtros_activos = []
+        st.session_state.autocomplete_options = {}
 
 # --- 5. CALLBACK PARA LIMPIAR ESTADO ---
 def clear_state_and_prepare_reload():
@@ -273,3 +285,5 @@ def clear_state_and_prepare_reload():
     st.session_state.df_pristine = None
     st.session_state.df_original = None
     st.session_state.df_staging = None
+    
+    st.session_state.autocomplete_options = {}

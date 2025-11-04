@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN CON TEXTOS DE HOTKEYS)
+# modules/translator.py (VERSIÓN FINAL COMPLETA)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -96,13 +96,15 @@ LANGUAGES = {
         "view_type_detailed": "Detallada",
         "view_type_grouped": "Agrupada",
         
+        'hotkey_loading_warning': '⚠️ **Atención:** Por favor, no use atajos de teclado (ej. Ctrl+S) mientras se esté cargando el editor de datos.',
+        
         'autocomplete_help': 'Seleccione un valor existente o escriba para filtrar. Esto ayuda a mantener la consistencia.',
         'editor_info_help': 'Está en modo de edición. Haga doble clic en una celda para modificarla. Puede añadir o eliminar filas usando los botones (+) y (x) al final.',
         
-        # --- MODIFICACIÓN DE TEXTOS DE BOTONES (CON HOTKEYS) ---
         'reset_changes_button': 'Revertir a Estable',
-        'reset_changes_help': 'Descarta los cambios del borrador y restaura el último punto de guardado estable. (Ctrl+R)',
+        'reset_changes_help': 'Descarta los cambios del borrador y restaura el último punto de guardado estable. (Ctrl+Z)',
         'add_row_button': '➕ Añadir Fila',
+        'add_row_help': 'Haga clic para añadir una fila (o use el atajo Ctrl+I).',
         'editor_info_help_add_row': '⚠️ Presione "Guardar Borrador" después de editar para actualizar el estado de las filas.',
         'save_changes_button': 'Guardar Borrador',
         'save_changes_help': 'Guarda los cambios en el borrador de trabajo. Los KPIs se actualizarán. (Ctrl+S)',
@@ -111,7 +113,8 @@ LANGUAGES = {
         'restore_pristine_button': 'Restaurar Original',
         'restore_pristine_help': '¡PELIGRO! Borra TODOS los cambios (borrador y estable) y restaura los datos del archivo Excel original.',
         'commit_success_message': '¡Punto de restauración estable guardado con éxito!',
-        # --- FIN DE MODIFICACIÓN ---
+        
+        'editor_actions_header': 'Acciones del Editor',
         
         'download_excel_manual_edits_button': 'Descargar Borrador Actual (Excel)',
         'download_excel_filtered_button': 'Descargar Vista Filtrada (Excel)',
@@ -176,13 +179,15 @@ LANGUAGES = {
         "view_type_detailed": "Detailed",
         "view_type_grouped": "Grouped",
         
+        'hotkey_loading_warning': '⚠️ **Attention:** Please do not use keyboard shortcuts (e.g., Ctrl+S) while the data editor is loading.',
+        
         'autocomplete_help': 'Select an existing value or type to filter. This helps maintain consistency.',
         'editor_info_help': 'You are in edit mode. Double-click a cell to modify it. You can add or delete rows using the (+) and (x) buttons at the bottom.',
         
-        # --- MODIFICACIÓN DE TEXTOS DE BOTONES (CON HOTKEYS) ---
         'reset_changes_button': 'Revert to Stable',
-        'reset_changes_help': 'Discards draft changes and restores the last stable save point. (Ctrl+R)',
+        'reset_changes_help': 'Discards draft changes and restores the last stable save point. (Ctrl+Z)',
         'add_row_button': '➕ Add Row',
+        'add_row_help': 'Click to add a new row (or use shortcut Ctrl+I).',
         'editor_info_help_add_row': '⚠️ Press "Save Draft" after editing to update row status.',
         'save_changes_button': 'Save Draft',
         'save_changes_help': 'Saves changes to the working draft. KPIs will update. (Ctrl+S)',
@@ -191,7 +196,8 @@ LANGUAGES = {
         'restore_pristine_button': 'Restore Original File',
         'restore_pristine_help': 'DANGER! Deletes ALL changes (draft and stable) and restores data from the original Excel file.',
         'commit_success_message': 'Stable restore point saved successfully!',
-        # --- FIN DE MODIFICACIÓN ---
+        
+        'editor_actions_header': 'Editor Actions',
         
         'download_excel_manual_edits_button': 'Download Current Draft (Excel)',
         'download_excel_filtered_button': 'Download Filtered View (Excel)',

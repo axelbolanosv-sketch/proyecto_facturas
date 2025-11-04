@@ -1,4 +1,4 @@
-# app.py (VERSIÓN CON MAPA DE TRADUCCIÓN CORREGIDO)
+# app.py (VERSIÓN CORREGIDA Y COMPLETA)
 # Este archivo actúa como el "director de orquesta", coordinando
 # los módulos de UI y utilidades.
 
@@ -103,6 +103,10 @@ if df_staging_copy is not None:
         )
         
         if view_type == get_text(lang, 'view_type_detailed'):
+            
+            # Advertencia sobre hotkeys durante la carga
+            st.warning(get_text(lang, 'hotkey_loading_warning'))
+            
             # col_map_ui_to_en ya está calculado y es correcto
             with st.spinner("Cargando editor..."):
                 render_detailed_view(
@@ -120,12 +124,14 @@ if df_staging_copy is not None:
                 col_map_ui_to_en, # <-- Pasamos el mapa corregido
                 todas_las_columnas_en
             )
-
+    
+    # --- ESTE ES EL BLOQUE QUE FALTABA ---
     except Exception as e:
         st.error(f"Error inesperado en la aplicación: {e}")
         st.exception(e) 
         clear_state_and_prepare_reload()
         st.rerun()
+    # --- FIN DEL BLOQUE CORREGIDO ---
 
 else:
     if not uploaded_files: 
