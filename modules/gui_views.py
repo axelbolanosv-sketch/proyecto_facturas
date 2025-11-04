@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN CON HASH DE IDIOMA CORREGIDO)
+# modules/gui_views.py (VERSIÓN CON HOTKEY Ctrl+I PARA AÑADIR FILA)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -80,13 +80,17 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         todas_las_columnas_en (list): Lista de todos los nombres de columnas EN.
     """
     
+    # --- INICIO DE MODIFICACIÓN 1: Cambiar hotkey a 'Ctrl+I' ---
     hotkeys.activate([
-        hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True, help="Guardar Borrador"),
-        hotkeys.hk("save_stable", "s", ctrl=True, shift=True, prevent_default=True, help="Guardar Estable"),
-        hotkeys.hk("revert_stable", "r", ctrl=True, prevent_default=True, help="Revertir a Estable"),
+        # --- LÍNEA MODIFICADA ---
+        hotkeys.hk("add_row", "i", ctrl=True, prevent_default=True, help="Insertar Fila (Ctrl+I)"), 
+        hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True, help="Guardar Borrador (Ctrl+S)"),
+        hotkeys.hk("save_stable", "s", ctrl=True, shift=True, prevent_default=True, help="Guardar Estable (Ctrl+Shift+S)"),
+        hotkeys.hk("revert_stable", "r", ctrl=True, prevent_default=True, help="Revertir a Estable (Ctrl+R)"),
     ],
         key='main_hotkeys'
     )
+    # --- FIN DE MODIFICACIÓN 1 ---
 
     if not st.session_state.columnas_visibles:
             st.warning(get_text(lang, 'visible_cols_warning'))
@@ -159,7 +163,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     # --- LÓGICA DE AÑADIR FILA ---
     def callback_add_row():
         """
-        Callback para el botón 'Añadir Fila'.
+        Callback para el botón 'Añadir Fila' o hotkey 'Ctrl+I'.
         Añade una fila al 'editor_state' con un índice único.
         """
         df_editado = st.session_state.editor_state
@@ -303,6 +307,14 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
     elif revert_button_pressed:
         _callback_revertir_estable()
+
+    # --- INICIO DE MODIFICACIÓN 2: El 'elif' para 'add_row' no cambia ---
+    # Sigue funcionando porque "add_row" es el nombre lógico de la hotkey.
+    # Ahora se activará con 'Ctrl+I' en lugar de 'Ctrl+N'.
+    elif hotkeys.pressed("add_row", key='main_hotkeys'):
+        callback_add_row()
+        st.rerun() # Forzar el refresco para mostrar la nueva fila
+    # --- FIN DE MODIFICACIÓN 2 ---
 
     elif hotkeys.pressed("save_stable", key='main_hotkeys'):
         _callback_guardar_estable()
