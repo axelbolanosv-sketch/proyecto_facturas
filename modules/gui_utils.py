@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN FINAL COMPLETA)
+# modules/gui_utils.py (VERSIÓN FINAL COMPLETA - AHORA SÍ)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -18,8 +18,14 @@ def initialize_session_state():
         st.session_state.columnas_visibles = None 
     if 'editor_state' not in st.session_state:
         st.session_state.editor_state = None
-    if 'current_view_hash' not in st.session_state:
-        st.session_state.current_view_hash = None
+    
+    # --- INICIO DE MODIFICACIÓN: Hashes separados ---
+    # Reemplazamos current_view_hash
+    if 'current_data_hash' not in st.session_state:
+        st.session_state.current_data_hash = None # Para filtros y columnas
+    if 'current_lang_hash' not in st.session_state:
+        st.session_state.current_lang_hash = None # Para el idioma
+    # --- FIN DE MODIFICACIÓN ---
     
     # --- NUEVA ARQUITECTURA DE DATOS ---
     if 'df_pristine' not in st.session_state:
@@ -280,7 +286,11 @@ def clear_state_and_prepare_reload():
     st.session_state.filtros_activos = []
     st.session_state.columnas_visibles = None
     st.session_state.editor_state = None 
-    st.session_state.current_view_hash = None
+    
+    # --- INICIO DE MODIFICACIÓN: Hashes separados ---
+    st.session_state.current_data_hash = None
+    st.session_state.current_lang_hash = None
+    # --- FIN DE MODIFICACIÓN ---
     
     st.session_state.df_pristine = None
     st.session_state.df_original = None

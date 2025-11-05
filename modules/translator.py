@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN FINAL COMPLETA)
+# modules/translator.py (VERSIÓN FINAL CON DISCLAIMER DE VISTA AGRUPADA)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -85,6 +85,9 @@ LANGUAGES = {
         "group_max_amount": "Monto Máximo",
         "group_avg_age": "Antigüedad Prom. (Días)",
         
+        # --- AÑADIDO: Disclaimer para la fila en blanco de la vista agrupada ---
+        "group_view_blank_row_info": "ℹ️ **Nota:** Una fila sin nombre (en blanco) en esta tabla agrupa todas las facturas que no tenían un valor (estaban vacías) en la columna de agrupación seleccionada (ej. un 'Estado de Pago' en blanco).",
+        
         "detailed_results_header": "Resultados Detallados",
         
         "visible_cols_header": "Columnas Visibles",
@@ -167,6 +170,9 @@ LANGUAGES = {
         "group_min_amount": "Min Amount",
         "group_max_amount": "Max Amount",
         "group_avg_age": "Avg. Age (Days)",
+        
+        # --- AÑADIDO: Disclaimer para la fila en blanco de la vista agrupada ---
+        "group_view_blank_row_info": "ℹ️ **Note:** A row with no name (blank) in this table groups all invoices that did not have a value (were empty) in the selected grouping column (e.g., a blank 'Pay Status').",
 
         "detailed_results_header": "Detailed Results",
         

@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN FINAL COMPLETA)
+# modules/gui_views.py (VERSIÓN CON PRESERVAR ESTADO AL CAMBIAR IDIOMA)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -119,18 +119,50 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                 required=False 
             )
     
-    # --- Lógica de Hash Estable ---
+    # --- INICIO DE MODIFICACIÓN: Lógica de Hash y Estado Separados ---
+    
+    # 1. Crear hashes separados para DATOS e IDIOMA
     filtros_json_string = json.dumps(st.session_state.filtros_activos, sort_keys=True)
     columnas_tuple = tuple(st.session_state.columnas_visibles)
-    
-    current_view_hash = hash((filtros_json_string, columnas_tuple, st.session_state.language))
+    current_data_hash = hash((filtros_json_string, columnas_tuple))
+    current_lang_hash = hash(st.session_state.language)
 
-    # --- Lógica de Estado ---
+    # 2. Lógica de Estado
     if 'editor_state' not in st.session_state or \
-        st.session_state.current_view_hash != current_view_hash:
+       st.session_state.current_data_hash != current_data_hash:
         
+        # --- CASO 1: Carga inicial o filtros cambiados ---
+        # Recargar el editor desde los datos "guardados" (df_staging)
         st.session_state.editor_state = df_display.copy() 
-        st.session_state.current_view_hash = current_view_hash
+        st.session_state.current_data_hash = current_data_hash
+        st.session_state.current_lang_hash = current_lang_hash # Guardar hash de idioma
+
+    elif st.session_state.current_lang_hash != current_lang_hash:
+        
+        # --- CASO 2: Solo cambió el idioma ---
+        # ¡Preservar los cambios del editor!
+        # st.session_state.editor_state tiene los datos correctos, pero los encabezados incorrectos.
+        
+        df_actual = st.session_state.editor_state.copy()
+        
+        # Traducir los encabezados del df_actual a los nuevos encabezados de df_display
+        # Ambas DFs (actual y display) deben tener el mismo número de columnas
+        
+        if len(df_actual.columns) == len(df_display.columns):
+            # Asumir que el orden es el mismo.
+            # Crear un mapa de {nombre_antiguo: nombre_nuevo}
+            column_rename_map = dict(zip(df_actual.columns, df_display.columns))
+            df_actual = df_actual.rename(columns=column_rename_map)
+            st.session_state.editor_state = df_actual.copy()
+        else:
+            # Algo salió mal (ej. cambiaron columnas visibles Y idioma al mismo tiempo),
+            # fallback a recargar para evitar un crash.
+            st.session_state.editor_state = df_display.copy()
+        
+        # Actualizar el hash de idioma
+        st.session_state.current_lang_hash = current_lang_hash
+
+    # --- FIN DE MODIFICACIÓN ---
     
     # --- LÓGICA DE AÑADIR FILA ---
     def callback_add_row():
@@ -140,7 +172,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         """
         df_editado = st.session_state.editor_state
         
-        # Corregido: Usar df_master_copy (el DF completo) para encontrar el max_index
         max_index = df_master_copy.index.max()
         if not df_editado.empty:
             max_index = max(max_index, df_editado.index.max())
@@ -228,7 +259,9 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             st.session_state.df_staging = st.session_state.df_original.copy()
         
         st.session_state.editor_state = None
-        st.session_state.current_view_hash = None
+        # --- Modificación: Limpiar hashes para forzar recarga de editor ---
+        st.session_state.current_data_hash = None
+        st.session_state.current_lang_hash = None
         st.rerun()
 
     # --- 4. RENDERIZADO DE BOTONES DE CONTROL ---
@@ -275,38 +308,32 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     
     # --- Lógica de manejo de eventos refactorizada (Previene Race Condition) ---
     
-    # --- Primero, leer TODOS los estados de las hotkeys ---
-    # Esto "limpia" sus estados "pegajosos" en cada ejecución.
     hk_add_row = hotkeys.pressed("add_row", key='main_hotkeys')
     hk_save_stable = hotkeys.pressed("save_stable", key='main_hotkeys')
     hk_save_draft = hotkeys.pressed("save_draft", key='main_hotkeys')
     hk_revert_stable = hotkeys.pressed("revert_stable", key='main_hotkeys')
     
-    # --- Segundo, actuar con una lógica de prioridad ---
-    
     if save_button_pressed:
-        _callback_guardar_borrador() # Llama a st.rerun()
+        _callback_guardar_borrador() 
     
     elif commit_button_pressed:
-        _callback_guardar_estable() # No llama a rerun
+        _callback_guardar_estable() 
     
     elif revert_button_pressed:
-        _callback_revertir_estable() # Llama a st.rerun()
+        _callback_revertir_estable() 
     
-    # Si no se presionó un botón, revisar las hotkeys
-    
-    elif hk_revert_stable: # Prioridad 1: Revertir (Ctrl+Z)
-        _callback_revertir_estable() # Llama a st.rerun()
+    elif hk_revert_stable: 
+        _callback_revertir_estable() 
         
-    elif hk_add_row: # Prioridad 2: Añadir Fila (Ctrl+I)
+    elif hk_add_row: 
         callback_add_row()
-        st.rerun() # Necesita un rerun manual
+        st.rerun() 
         
-    elif hk_save_stable: # Prioridad 3: Guardar Estable (Ctrl+Shift+S)
-        _callback_guardar_estable() # No llama a rerun
+    elif hk_save_stable: 
+        _callback_guardar_estable() 
         
-    elif hk_save_draft: # Prioridad 4: Guardar Borrador (Ctrl+S)
-        _callback_guardar_borrador() # Llama a st.rerun()
+    elif hk_save_draft: 
+        _callback_guardar_borrador() 
             
     # --- FIN DE LA LÓGICA DE MANEJO DE EVENTOS ---
     
@@ -357,7 +384,9 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                 st.session_state.df_staging = st.session_state.df_pristine.copy()
             
             st.session_state.editor_state = None
-            st.session_state.current_view_hash = None
+            # --- Modificación: Limpiar hashes para forzar recarga de editor ---
+            st.session_state.current_data_hash = None
+            st.session_state.current_lang_hash = None
             st.rerun()
 
 
@@ -385,9 +414,11 @@ def render_grouped_view(lang, resultado_df, col_map_ui_to_en, todas_las_columnas
         key='group_by_col_select'
     )
     
+    st.info(get_text(lang, 'group_view_blank_row_info'))
+    
     if col_para_agrupar_ui:
         col_para_agrupar_en = col_map_ui_to_en.get(col_para_agrupar_ui, col_para_agrupar_ui)
-        df_agrupado = resultado_df.copy()
+        df_agrupado = resultado_df.copy() 
         
         if 'Total' in df_agrupado.columns:
             df_agrupado['Total'] = pd.to_numeric(df_agrupado['Total'], errors='coerce')
@@ -395,7 +426,8 @@ def render_grouped_view(lang, resultado_df, col_map_ui_to_en, todas_las_columnas
             df_agrupado['Invoice Date Age'] = pd.to_numeric(df_agrupado['Invoice Date Age'], errors='coerce')
 
         agg_operations = {'Total': ['sum', 'mean', 'min', 'max', 'count']}
-        if 'Invoice Date Age' in df_aggrupado.columns and pd.api.types.is_numeric_dtype(df_agrupado['Invoice Date Age']):
+        
+        if 'Invoice Date Age' in df_agrupado.columns and pd.api.types.is_numeric_dtype(df_agrupado['Invoice Date Age']):
             agg_operations['Invoice Date Age'] = ['mean']
 
         try: 
