@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN FINAL CON DISCLAIMER DE VISTA AGRUPADA)
+# modules/translator.py (VERSIÓN CON RE-FORMATEO DE FECHAS)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -85,7 +85,6 @@ LANGUAGES = {
         "group_max_amount": "Monto Máximo",
         "group_avg_age": "Antigüedad Prom. (Días)",
         
-        # --- AÑADIDO: Disclaimer para la fila en blanco de la vista agrupada ---
         "group_view_blank_row_info": "ℹ️ **Nota:** Una fila sin nombre (en blanco) en esta tabla agrupa todas las facturas que no tenían un valor (estaban vacías) en la columna de agrupación seleccionada (ej. un 'Estado de Pago' en blanco).",
         
         "detailed_results_header": "Resultados Detallados",
@@ -131,6 +130,14 @@ LANGUAGES = {
 
         "editor_info_help_save": "Haga clic en 'Guardar Borrador' para actualizar el estado.",
         "save_success_message": "¡Borrador guardado y estado actualizado con éxito!",
+        
+        "editor_manual_save_warning": "⚠️ **Importante:** Sus cambios **no se guardan automáticamente** (ni con 'Enter'). Puede editar múltiples celdas. Haga clic en **'Guardar Borrador' (o Ctrl+S)** para guardar. Si cambia de idioma, filtros, o vista *antes* de guardar, sus ediciones se perderán.",
+        
+        # --- INICIO DE MODIFICACIÓN (Formato de Fechas) ---
+        "date_format_help": "Formato de guardado: DD-MM-AAAA. Se intentará analizar otros formatos (ej. 20220309).",
+        "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
+        "date_format_en": "%m-%d-%Y"  # Formato Mes-Día-Año
+        # --- FIN DE MODIFICACIÓN ---
     },
     "en": {
         "title": "Dynamic Invoice Search",
@@ -171,7 +178,6 @@ LANGUAGES = {
         "group_max_amount": "Max Amount",
         "group_avg_age": "Avg. Age (Days)",
         
-        # --- AÑADIDO: Disclaimer para la fila en blanco de la vista agrupada ---
         "group_view_blank_row_info": "ℹ️ **Note:** A row with no name (blank) in this table groups all invoices that did not have a value (were empty) in the selected grouping column (e.g., a blank 'Pay Status').",
 
         "detailed_results_header": "Detailed Results",
@@ -206,7 +212,7 @@ LANGUAGES = {
         'editor_actions_header': 'Editor Actions',
         
         'download_excel_manual_edits_button': 'Download Current Draft (Excel)',
-        'download_excel_filtered_button': 'Download Filtered View (Excel)',
+        'download_excel_filtered_button': 'Descargar Vista Filtrada (Excel)',
         
         "status_incomplete": "Row Incomplete",
         "status_complete": "Row Complete",
@@ -217,6 +223,14 @@ LANGUAGES = {
 
         "editor_info_help_save": "Click 'Save Draft' to update row status.",
         "save_success_message": "Draft saved and status updated successfully!",
+        
+        "editor_manual_save_warning": "⚠️ **Important:** Your changes are **not saved automatically** (not even with 'Enter'). You can edit multiple cells. Click **'Save Draft' (or Ctrl+S)** to save. If you change the language, filters, or view *before* saving, your edits will be lost.",
+        
+        # --- INICIO DE MODIFICACIÓN (Formato de Fechas) ---
+        "date_format_help": "Save format: MM-DD-AAAA. Other formats (e.g., 20220309) will be auto-parsed.",
+        "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
+        "date_format_en": "%m-%d-%Y"  # Formato Mes-Día-Año
+        # --- FIN DE MODIFICACIÓN ---
     }
 }
 

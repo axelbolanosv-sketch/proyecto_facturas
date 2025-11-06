@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN CON GUARDADO 100% MANUAL PARA EDICIÓN RÁPIDA)
+# modules/gui_views.py (VERSIÓN CON FIX DE GUARDADO DE FILTRO Y RE-FORMATEO DE FECHAS)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -69,6 +69,8 @@ def render_kpi_dashboard(lang, resultado_df):
     
     try:
         # Intenta convertir la columna 'Total' a numérico para los cálculos.
+        # Esta conversión es crucial y ahora funcionará gracias al fix en
+        # _callback_guardar_borrador.
         totales_numericos = pd.to_numeric(resultado_df['Total'], errors='coerce').dropna()
     except KeyError:
         # Fallback si la columna 'Total' no existe
@@ -141,28 +143,44 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     df_display = df_vista_detallada.copy()
     df_display.columns = [translate_column(lang, col) for col in df_display.columns]
     
-    # --- Configuración de Columnas (Autocompletar) ---
+    # --- [INICIO] MODIFICACIÓN: Configuración de Columnas (Ayuda de Fechas) ---
     configuracion_columnas = {}
     
-    # Lee las opciones pre-calculadas en 'gui_utils.py'
-    if 'autocomplete_options' in st.session_state:
-        for col_en, opciones in st.session_state.autocomplete_options.items():
-            if not opciones: # Omitir si las opciones fallaron en generarse
-                continue
-                
-            # (Aquí es donde iría la lógica del showcase para inyectar opciones personalizadas)
-            opciones_completas = opciones.copy()
-                
-            # Traducir el nombre de la columna EN al idioma UI actual
-            col_ui = translate_column(lang, col_en)
-            
-            # Aplicar la configuración a la columna con el nombre UI
+    # Obtiene el texto de ayuda para fechas (traducido)
+    date_format_help_text = get_text(lang, 'date_format_help')
+    
+    # Obtiene las opciones de autocompletar cacheadas
+    cached_options = st.session_state.get('autocomplete_options', {})
+
+    # Itera sobre las columnas VISIBLES (en el idioma de la UI)
+    for col_ui in df_display.columns:
+        
+        # Traduce el nombre de la UI a EN para comprobaciones
+        col_en = col_map_ui_to_en.get(col_ui, col_ui) 
+        
+        if col_en in cached_options and cached_options[col_en]:
+            # --- CASO 1: Es una columna de Autocompletar ---
             configuracion_columnas[col_ui] = st.column_config.SelectboxColumn(
                 f"{col_ui} (Autocompletar)",
                 help=get_text(lang, 'autocomplete_help'),
-                options=opciones_completas, 
+                options=cached_options[col_en], 
                 required=False 
             )
+        
+        elif 'Date' in col_en and 'Age' not in col_en:
+            # --- CASO 2: Es una columna de Fecha (pero no de Antigüedad) ---
+            # Usa TextColumn pero añade el texto de ayuda con el formato.
+            configuracion_columnas[col_ui] = st.column_config.TextColumn(
+                f"{col_ui}",
+                help=date_format_help_text, # Añade la ayuda de formato
+                required=False
+            )
+            
+        # --- CASO 3: Columnas Numéricas (como 'Age') o de Texto Simple ---
+        # No se aplica ninguna configuración especial.
+        # Streamlit inferirá automáticamente el tipo correcto.
+    
+    # --- [FIN] MODIFICACIÓN: Configuración de Columnas ---
     
     # --- Lógica de Hash y Estado (para preservar cambios al cambiar idioma) ---
     
@@ -173,25 +191,18 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     current_lang_hash = hash(st.session_state.language)
 
     # 2. Lógica de Estado
-    # 'editor_state' ahora solo se actualiza al Guardar, Revertir o Cargar.
     
     if 'editor_state' not in st.session_state or \
        st.session_state.current_data_hash != current_data_hash:
         
         # --- CASO 1: Carga inicial o filtros/columnas cambiados ---
-        # Recargar el editor desde los datos "guardados" (df_staging)
-        # Se usa 'df_display' que es la vista filtrada y traducida
         st.session_state.editor_state = df_display.copy() 
         st.session_state.current_data_hash = current_data_hash
-        st.session_state.current_lang_hash = current_lang_hash # Guardar hash de idioma
+        st.session_state.current_lang_hash = current_lang_hash
 
     elif st.session_state.current_lang_hash != current_lang_hash:
         
         # --- CASO 2: Solo cambió el idioma ---
-        # ADVERTENCIA: Con este guardado manual, si el usuario cambia de idioma
-        # sin guardar, 'st.session_state.editor_state' estará desactualizado
-        # y los cambios se perderán. Esto es el comportamiento que hemos aceptado.
-        
         df_actual = st.session_state.editor_state.copy()
         
         if len(df_actual.columns) == len(df_display.columns):
@@ -203,7 +214,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             # Fallback
             st.session_state.editor_state = df_display.copy()
         
-        # Actualizar el hash de idioma
         st.session_state.current_lang_hash = current_lang_hash
 
     # --- FIN DE LÓGICA DE ESTADO ---
@@ -216,13 +226,11 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         """
         df_editado = st.session_state.editor_state
         
-        # Encuentra el índice máximo actual para crear uno nuevo
         max_index = df_master_copy.index.max()
         if not df_editado.empty:
             max_index = max(max_index, df_editado.index.max())
         new_index = max_index + 1
 
-        # Define los valores por defecto (0 para numérico, "" para texto)
         default_values = {}
         for col in df_editado.columns:
             col_en = col_map_ui_to_en.get(col, col) 
@@ -234,21 +242,15 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         
         new_row_df = pd.DataFrame(default_values, index=[new_index])
         
-        # Concatena la nueva fila al 'editor_state'
         st.session_state.editor_state = pd.concat(
             [new_row_df, df_editado], 
             ignore_index=False 
         )
     
-    # --- [INICIO] CAMBIO SOLICITADO ---
-    # 1. Advertencia al Usuario (Nueva advertencia para Guardado Manual)
-    # Este es el disclaimer que solicitaste.
-    st.warning("⚠️ **Importante:** Sus cambios **no se guardan automáticamente** (ni con 'Enter'). Puede editar múltiples celdas. Haga clic en **'Guardar Borrador' (o Ctrl+S)** para guardar. Si cambia de idioma, filtros, o vista *antes* de guardar, sus ediciones se perderán.")
+    # 1. Advertencia al Usuario (Guardado Manual)
+    st.warning(get_text(lang, 'editor_manual_save_warning'))
     
     # 2. Renderizar el Data Editor
-    # Se alimenta el editor con el 'editor_state' de la sesión.
-    # 'editor_return_value' contendrá los cambios hechos por el usuario
-    # en el navegador, *aún no guardados* en el 'session_state'.
     editor_return_value = st.data_editor(
         st.session_state.editor_state,
         column_config=configuracion_columnas, 
@@ -258,64 +260,105 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         key="main_data_editor"
     )
 
-    # 3. LÍNEA PROBLEMÁTICA ELIMINADA
-    # La línea `st.session_state.editor_state = editor_return_value.copy()`
-    # ha sido eliminada. El 'editor_state' solo se actualizará
-    # cuando el usuario presione 'Guardar Borrador' o 'Revertir'.
-    
-    # --- [FIN] CAMBIO SOLICITADO ---
-
-
     # --- 3. DEFINICIÓN DE CALLBACKS DE ACCIÓN (Guardar/Revertir) ---
-    # Estos callbacks ahora son la *única* forma de sincronizar el editor.
 
     def _callback_guardar_borrador():
         """
         (Ctrl+S) Guarda el estado del editor en 'df_staging' (Archivo 2: Borrador).
         """
-        # 1. Obtiene los datos actuales del editor (los cambios del usuario)
-        df_edited_view_ui = editor_return_value.copy()
         
-        # 2. Lógica para recalcular "Row Status" (Completa/Incompleta)
-        col_status_en = "Row Status"
-        col_status_ui = translate_column(lang, col_status_en)
-        if col_status_ui in df_edited_view_ui.columns:
-            cols_to_check = [col for col in df_edited_view_ui.columns if col != col_status_ui]
-            df_check = df_edited_view_ui[cols_to_check].fillna("").astype(str)
-            blank_mask = (df_check == "") | (df_check == "0")
-            incomplete_rows = blank_mask.any(axis=1)
-            df_edited_view_ui[col_status_ui] = np.where(
-                incomplete_rows,
-                get_text(lang, 'status_incomplete'),
-                get_text(lang, 'status_complete')
-            )
-        
-        # 3. Traduce las columnas de la vista (UI) de nuevo a Inglés (EN)
-        df_to_merge_en = df_edited_view_ui.copy()
-        df_to_merge_en.columns = [col_map_ui_to_en.get(col_ui, col_ui) for col_ui in df_to_merge_en.columns]
+        # --- [INICIO] MODIFICACIÓN (FIX DE BUG DE FILTRO) ---
+        # Se envuelve toda la lógica de guardado en un try/except.
+        # Si el guardado falla (ej. por un mal formato de fecha que
+        # detiene el script), ahora mostrará un error en lugar de
+        # fallar silenciosamente y perder los datos.
+        try:
+            # 1. Obtiene los datos actuales del editor (los cambios del usuario)
+            df_edited_view_ui = editor_return_value.copy()
+            
+            # 2. Lógica para recalcular "Row Status" (Completa/Incompleta)
+            col_status_en = "Row Status"
+            col_status_ui = translate_column(lang, col_status_en)
+            if col_status_ui in df_edited_view_ui.columns:
+                cols_to_check = [col for col in df_edited_view_ui.columns if col != col_status_ui]
+                df_check = df_edited_view_ui[cols_to_check].fillna("").astype(str)
+                blank_mask = (df_check == "") | (df_check == "0")
+                incomplete_rows = blank_mask.any(axis=1)
+                df_edited_view_ui[col_status_ui] = np.where(
+                    incomplete_rows,
+                    get_text(lang, 'status_incomplete'),
+                    get_text(lang, 'status_complete')
+                )
+            
+            # 3. Traduce las columnas de la vista (UI) de nuevo a Inglés (EN)
+            df_to_merge_en = df_edited_view_ui.copy()
+            df_to_merge_en.columns = [col_map_ui_to_en.get(col_ui, col_ui) for col_ui in df_to_merge_en.columns]
 
-        # 4. Carga el 'df_staging' (Borrador) actual
-        df_master_staging = st.session_state.df_staging.copy()
+            # --- [INICIO] MODIFICACIÓN (Formateo de Fechas) ---
+            # 4. Auto-formatear columnas de fecha ANTES de guardar
+            current_lang = st.session_state.language
+            dayfirst = (current_lang == 'es')
+            # Obtiene el formato de string (ej. '%d-%m-%Y') del translator
+            target_format = get_text(current_lang, 'date_format_es' if current_lang == 'es' else 'date_format_en')
 
-        # 5. Separa filas nuevas de filas existentes
-        existing_rows_en = df_to_merge_en[df_to_merge_en.index.isin(df_master_staging.index)]
-        new_rows_en = df_to_merge_en[~df_to_merge_en.index.isin(df_master_staging.index)]
-        
-        # 6. Actualiza las filas existentes y concatena las nuevas
-        df_master_staging.update(existing_rows_en)
-        df_master_staging = pd.concat([new_rows_en, df_master_staging])
-        
-        # 7. Reordena por índice
-        df_master_staging = df_master_staging.sort_index(ascending=True)
-        
-        # 8. Guarda el resultado en 'df_staging' (Archivo 2)
-        st.session_state.df_staging = df_master_staging.copy()
-        
-        # 9. Actualiza el 'editor_state' para que refleje los cambios guardados
-        st.session_state.editor_state = df_edited_view_ui.copy()
-        
-        # 10. Muestra mensaje de éxito
-        st.success(get_text(lang, 'save_success_message'))
+            for col_en in df_to_merge_en.columns:
+                if 'Date' in col_en and 'Age' not in col_en:
+                    # Convierte la columna a datetime (analizando formatos como 20220309)
+                    # dayfirst=True (para 'es') le dice que trate 01/02/2023 como 2 de Enero
+                    date_col = pd.to_datetime(df_to_merge_en[col_en], errors='coerce', dayfirst=dayfirst)
+                    
+                    # Re-formatea la columna al formato string deseado (DD-MM-AAAA o MM-DD-AAAA)
+                    df_to_merge_en[col_en] = date_col.dt.strftime(target_format)
+                    
+                    # Limpia valores nulos que `strftime` puede dejar como 'NaT'
+                    df_to_merge_en[col_en] = df_to_merge_en[col_en].astype(str).replace('NaT', '').replace('nan', '')
+            # --- [FIN] MODIFICACIÓN (Formateo de Fechas) ---
+
+            # 5. Carga el 'df_staging' (Borrador) actual
+            df_master_staging = st.session_state.df_staging.copy()
+
+            # 6. Separa filas nuevas de filas existentes
+            existing_rows_en = df_to_merge_en[df_to_merge_en.index.isin(df_master_staging.index)]
+            new_rows_en = df_to_merge_en[~df_to_merge_en.index.isin(df_master_staging.index)]
+            
+            # 7. Actualiza las filas existentes y concatena las nuevas
+            # .update() USA EL ÍNDICE para encontrar las filas correctas,
+            # por lo que funciona incluso en una vista filtrada.
+            df_master_staging.update(existing_rows_en)
+            df_master_staging = pd.concat([new_rows_en, df_master_staging])
+            
+            # 8. Re-convertir dtypes numéricos (FIX DE KPI)
+            for col in df_master_staging.columns:
+                if 'Total' in col or 'Amount' in col or 'Age' in col or 'ID' in col or 'Number' in col:
+                     df_master_staging[col] = pd.to_numeric(df_master_staging[col], errors='coerce').fillna(0)
+            
+            # 9. Reordena por índice
+            df_master_staging = df_master_staging.sort_index(ascending=True)
+            
+            # 10. Guarda el resultado en 'df_staging' (Archivo 2)
+            st.session_state.df_staging = df_master_staging.copy()
+            
+            # 11. Actualiza el 'editor_state' para que refleje los cambios guardados
+            # (incluyendo las fechas re-formateadas)
+            # Para hacer esto, necesitamos re-traducir las columnas de `df_to_merge_en` a la UI
+            df_edited_view_ui_updated = df_to_merge_en.copy()
+            # Crear mapa inverso EN -> UI
+            col_map_en_to_ui = {v: k for k, v in col_map_ui_to_en.items() if k in df_edited_view_ui.columns}
+            df_edited_view_ui_updated.columns = [col_map_en_to_ui.get(col_en, col_en) for col_en in df_edited_view_ui_updated.columns]
+            
+            st.session_state.editor_state = df_edited_view_ui_updated
+            
+            # 12. Muestra mensaje de éxito
+            st.success(get_text(lang, 'save_success_message'))
+
+        except Exception as e:
+            # Si algo falla (ej. un formato de fecha imposible de analizar),
+            # se mostrará el error aquí en lugar de fallar silenciosamente.
+            # Esto soluciona el "bug de guardado con filtro".
+            st.error(f"Error al guardar el borrador: {e}")
+            st.exception(e)
+        # --- [FIN] MODIFICACIÓN (FIX DE BUG DE FILTRO) ---
+
 
     def _callback_guardar_estable():
         """
@@ -333,8 +376,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             st.session_state.df_staging = st.session_state.df_original.copy()
         
         # Limpia el estado del editor y los hashes.
-        # Esto forzará al 'CASO 1' a ejecutarse en el próximo rerun,
-        # recargando el editor desde el 'df_staging' recién revertido.
         st.session_state.editor_state = None
         st.session_state.current_data_hash = None
         st.session_state.current_lang_hash = None
@@ -414,7 +455,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
     with col_dl1:
         # Descarga de datos EDITADOS (Borrador)
-        # Usa 'editor_return_value' para descargar lo que se ve en pantalla
         df_para_descargar_editado = editor_return_value.copy()
         df_para_descargar_editado.columns = [
             col_map_ui_to_en.get(col_ui, col_ui) 
@@ -432,7 +472,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     
     with col_dl2:
         # Descarga de datos FILTRADOS (Borrador)
-        # Usa 'df_vista_detallada' (el DF *antes* de entrar al editor)
         excel_data_filtrada = to_excel(df_vista_detallada)
         st.download_button(
             label=get_text(lang, 'download_excel_filtered_button'), 

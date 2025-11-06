@@ -1,4 +1,4 @@
-# app.py (VERSIÓN CORREGIDA Y COMPLETA)
+# app.py (VERSIÓN CORREGIDA Y COMPLETA - FIX DE SIDEBAR)
 # Este archivo actúa como el "director de orquesta", coordinando
 # los módulos de UI y utilidades.
 
@@ -43,19 +43,21 @@ col_map_ui_to_en = None # <-- RENOMBRADO
 todas_las_columnas_en = None
 df_staging_copy = None 
 
+# --- INICIO DE MODIFICACIÓN (Sidebar Fix) ---
+# Este bloque AHORA se ejecuta en el refresco POSTERIOR a la carga del archivo,
+# preparando las variables ANTES de que se renderice el sidebar.
 if st.session_state.df_staging is not None:
     df_staging_copy = st.session_state.df_staging.copy()
     todas_las_columnas_en = list(df_staging_copy.columns)
     
-    # --- INICIO DE LA CORRECCIÓN (BUGS 3 y 4) ---
-    # El mapa AHORA se crea usando el idioma actual ('lang')
-    # Esto asegura que el mapa de UI -> EN sea correcto para CUALQUIER idioma.
     col_map_ui_to_en = {translate_column(lang, col): col for col in todas_las_columnas_en}
-    # --- FIN DE LA CORRECCIÓN ---
     
     todas_las_columnas_ui = sorted([translate_column(lang, col) for col in todas_las_columnas_en])
+# --- FIN DE MODIFICACIÓN ---
 
 # --- 5. Renderizar Barra Lateral ---
+# Ahora, en el refresco post-carga, df_loaded será True y las listas
+# de columnas estarán pobladas, renderizando el sidebar correctamente.
 uploaded_files = render_sidebar(
     lang, 
     df_loaded=(st.session_state.df_staging is not None),
@@ -66,9 +68,22 @@ uploaded_files = render_sidebar(
 
 # --- 6. Lógica de Carga de Archivos ---
 if uploaded_files and st.session_state.df_staging is None:
+    # Procesa los archivos y guarda en session_state
     load_and_process_files(uploaded_files, lang)
+    
+    # --- INICIO DE MODIFICACIÓN (Sidebar Fix) ---
+    # Forzamos un rerun INMEDIATO.
+    # El script se detiene aquí y se reinicia desde el principio.
+    # En el siguiente run, el bloque del paso 4 se ejecutará
+    # y el sidebar se renderizará con los datos listos.
+    st.rerun()
+    # --- FIN DE MODIFICACIÓN ---
 
 # --- 7. Lógica Principal (Solo si hay un DF cargado) ---
+
+# Esta comprobación es para el caso en que el archivo se cargó
+# pero el script aún no se ha refrescado (ahora es menos probable
+# gracias al rerun, pero es una buena salvaguarda).
 if df_staging_copy is None and st.session_state.df_staging is not None:
     df_staging_copy = st.session_state.df_staging.copy()
     if todas_las_columnas_en is None:
