@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN FINAL COMPLETA - AHORA SÍ)
+# modules/gui_utils.py (VERSIÓN CON GUARDADO DE ESTADO DE COLUMNAS)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -10,22 +10,28 @@ from modules.translator import get_text
 # --- 1. Inicializar el 'Session State' ---
 def initialize_session_state():
     """Define el estado inicial de la sesión de Streamlit."""
+    # (El código existente permanece igual...)
     if 'filtros_activos' not in st.session_state:
         st.session_state.filtros_activos = []
     if 'language' not in st.session_state:
         st.session_state.language = 'es'
     if 'columnas_visibles' not in st.session_state:
         st.session_state.columnas_visibles = None 
+        
+    # --- [INICIO] MODIFICACIÓN (FIX DE CTRL+Z) ---
+    # Se añade un nuevo estado para guardar la lista de columnas
+    # del punto de restauración "Estable".
+    if 'columnas_visibles_estable' not in st.session_state:
+        st.session_state.columnas_visibles_estable = None
+    # --- [FIN] MODIFICACIÓN ---
+        
     if 'editor_state' not in st.session_state:
         st.session_state.editor_state = None
     
-    # --- INICIO DE MODIFICACIÓN: Hashes separados ---
-    # Reemplazamos current_view_hash
     if 'current_data_hash' not in st.session_state:
         st.session_state.current_data_hash = None # Para filtros y columnas
     if 'current_lang_hash' not in st.session_state:
         st.session_state.current_lang_hash = None # Para el idioma
-    # --- FIN DE MODIFICACIÓN ---
     
     # --- NUEVA ARQUITECTURA DE DATOS ---
     if 'df_pristine' not in st.session_state:
@@ -265,7 +271,14 @@ def load_and_process_files(uploaded_files, lang):
             
             st.session_state.autocomplete_options = autocomplete_options
             
-            st.session_state.columnas_visibles = list(df_processed.columns)
+            # --- Guardar estado de columnas ---
+            columnas_iniciales = list(df_processed.columns)
+            st.session_state.columnas_visibles = columnas_iniciales.copy()
+            # --- [INICIO] MODIFICACIÓN (FIX DE CTRL+Z) ---
+            # Guardamos la lista inicial de columnas también como "estable".
+            st.session_state.columnas_visibles_estable = columnas_iniciales.copy()
+            # --- [FIN] MODIFICACIÓN ---
+
 
     except Exception as e:
         st.error(get_text(lang, 'error_critical').format(e=e))
@@ -274,6 +287,7 @@ def load_and_process_files(uploaded_files, lang):
         st.session_state.df_original = None
         st.session_state.df_staging = None
         st.session_state.columnas_visibles = None
+        st.session_state.columnas_visibles_estable = None # <-- Limpiar
         st.session_state.filtros_activos = []
         st.session_state.autocomplete_options = {}
 
@@ -285,12 +299,13 @@ def clear_state_and_prepare_reload():
     """
     st.session_state.filtros_activos = []
     st.session_state.columnas_visibles = None
+    # --- [INICIO] MODIFICACIÓN (FIX DE CTRL+Z) ---
+    st.session_state.columnas_visibles_estable = None # <-- Limpiar
+    # --- [FIN] MODIFICACIÓN ---
     st.session_state.editor_state = None 
     
-    # --- INICIO DE MODIFICACIÓN: Hashes separados ---
     st.session_state.current_data_hash = None
     st.session_state.current_lang_hash = None
-    # --- FIN DE MODIFICACIÓN ---
     
     st.session_state.df_pristine = None
     st.session_state.df_original = None

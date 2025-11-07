@@ -1,4 +1,4 @@
-# modules/gui_sidebar.py (VERSIÓN ACTUALIZADA)
+# modules/gui_sidebar.py (VERSIÓN CON FIX DE ORDEN DE COLUMNAS MANUAL)
 # Contiene toda la lógica para renderizar la barra lateral.
 
 import streamlit as st
@@ -60,8 +60,7 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 key='filter_col_select'
             )
             
-            # --- INICIO: LÓGICA DE AYUDA DE FILTRO ---
-            col_estado_traducida = translate_column(lang, "_row_status")
+            col_estado_traducida = translate_column(lang, "Row Status")
             placeholder_default = get_text(lang, 'search_text_placeholder_default')
             help_default = get_text(lang, 'search_text_help_default')
             
@@ -71,7 +70,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
             else:
                 placeholder_text = placeholder_default
                 help_text = help_default
-            # --- FIN: LÓGICA DE AYUDA DE FILTRO ---
 
             valor_a_buscar = st.text_input(
                 get_text(lang, 'search_text'),
@@ -107,6 +105,7 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
              st.session_state.columnas_visibles = todas_las_columnas_en
 
         def callback_toggle_cols():
+            """Activa o desactiva todas las columnas visibles."""
             if len(st.session_state.columnas_visibles) < len(todas_las_columnas_en):
                 st.session_state.columnas_visibles = todas_las_columnas_en
             else:
@@ -116,27 +115,43 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 translate_column(lang, col) for col in st.session_state.columnas_visibles
             ]
 
+        # --- [INICIO] MODIFICACIÓN (FIX DE ORDEN DE COLUMNA) ---
         def callback_update_cols_from_multiselect():
+            """
+            Actualiza la lista de columnas visibles basado en la selección del
+            multiselect, PERO preservando el orden original del archivo.
+            """
+            # 1. Obtiene las columnas seleccionadas (en el idioma de la UI)
             columnas_seleccionadas_ui = st.session_state.visible_cols_multiselect
+            
+            # 2. Crea la nueva lista de columnas visibles (en Inglés)
+            # Itera sobre la lista COMPLETA original (todas_las_columnas_en)
+            # y mantiene solo aquellas cuya traducción esté en la lista seleccionada.
             columnas_seleccionadas_en = [
-                col_map_es_to_en.get(col_ui, col_ui) 
-                for col_ui in columnas_seleccionadas_ui
+                col_en for col_en in todas_las_columnas_en
+                if translate_column(lang, col_en) in columnas_seleccionadas_ui
             ]
+            
+            # 3. Guarda la nueva lista ordenada en el estado
             st.session_state.columnas_visibles = columnas_seleccionadas_en
+        # --- [FIN] MODIFICACIÓN ---
 
         st.sidebar.button(
             get_text(lang, 'visible_cols_toggle_button'), 
             key="toggle_cols_btn",
             on_click=callback_toggle_cols
         )
+        
+        # Prepara los valores por defecto para el multiselect
         defaults_ui = [translate_column(lang, col) for col in st.session_state.columnas_visibles]
+        
         st.sidebar.multiselect(
             get_text(lang, 'visible_cols_select'),
-            options=todas_las_columnas_ui,
+            options=todas_las_columnas_ui, # Esta lista ya viene en el orden original desde app.py
             default=defaults_ui,
             key='visible_cols_multiselect',
-            on_change=callback_update_cols_from_multiselect
+            on_change=callback_update_cols_from_multiselect # <-- Llama al callback corregido
         )
 
-    # Retornamos los archivos cargados para que el gui.py principal sepa si debe procesar.
+    # Retornamos los archivos cargados para que el app.py principal sepa si debe procesar.
     return uploaded_files

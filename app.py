@@ -1,4 +1,4 @@
-# app.py (VERSIÓN CORREGIDA Y COMPLETA - FIX DE SIDEBAR)
+# app.py (VERSIÓN CORREGIDA Y COMPLETA - FIX DE ORDEN DE COLUMNA)
 # Este archivo actúa como el "director de orquesta", coordinando
 # los módulos de UI y utilidades.
 
@@ -39,63 +39,54 @@ st.write(get_text(lang, 'subtitle'))
 
 # --- 4. LÓGICA DE REORDENAMIENTO ---
 todas_las_columnas_ui = None
-col_map_ui_to_en = None # <-- RENOMBRADO
+col_map_ui_to_en = None
 todas_las_columnas_en = None
 df_staging_copy = None 
 
-# --- INICIO DE MODIFICACIÓN (Sidebar Fix) ---
-# Este bloque AHORA se ejecuta en el refresco POSTERIOR a la carga del archivo,
-# preparando las variables ANTES de que se renderice el sidebar.
 if st.session_state.df_staging is not None:
     df_staging_copy = st.session_state.df_staging.copy()
     todas_las_columnas_en = list(df_staging_copy.columns)
     
     col_map_ui_to_en = {translate_column(lang, col): col for col in todas_las_columnas_en}
     
-    todas_las_columnas_ui = sorted([translate_column(lang, col) for col in todas_las_columnas_en])
-# --- FIN DE MODIFICACIÓN ---
+    # --- [INICIO] MODIFICACIÓN (FIX DE ORDEN DE COLUMNA) ---
+    # Se elimina sorted() de esta línea.
+    # Esto asegura que el multiselect del sidebar muestre las
+    # columnas en el orden original del archivo, preservando
+    # el orden al guardar y revertir.
+    todas_las_columnas_ui = [translate_column(lang, col) for col in todas_las_columnas_en]
+    # --- [FIN] MODIFICACIÓN ---
 
 # --- 5. Renderizar Barra Lateral ---
-# Ahora, en el refresco post-carga, df_loaded será True y las listas
-# de columnas estarán pobladas, renderizando el sidebar correctamente.
 uploaded_files = render_sidebar(
     lang, 
     df_loaded=(st.session_state.df_staging is not None),
     todas_las_columnas_ui=todas_las_columnas_ui,
-    col_map_es_to_en=col_map_ui_to_en, # Pasamos el mapa correcto (aunque el nombre del arg sea 'es')
+    col_map_es_to_en=col_map_ui_to_en,
     todas_las_columnas_en=todas_las_columnas_en
 )
 
 # --- 6. Lógica de Carga de Archivos ---
 if uploaded_files and st.session_state.df_staging is None:
-    # Procesa los archivos y guarda en session_state
     load_and_process_files(uploaded_files, lang)
-    
-    # --- INICIO DE MODIFICACIÓN (Sidebar Fix) ---
-    # Forzamos un rerun INMEDIATO.
-    # El script se detiene aquí y se reinicia desde el principio.
-    # En el siguiente run, el bloque del paso 4 se ejecutará
-    # y el sidebar se renderizará con los datos listos.
+    # Forzar un rerun para asegurar que el sidebar se actualice
     st.rerun()
-    # --- FIN DE MODIFICACIÓN ---
 
 # --- 7. Lógica Principal (Solo si hay un DF cargado) ---
-
-# Esta comprobación es para el caso en que el archivo se cargó
-# pero el script aún no se ha refrescado (ahora es menos probable
-# gracias al rerun, pero es una buena salvaguarda).
 if df_staging_copy is None and st.session_state.df_staging is not None:
     df_staging_copy = st.session_state.df_staging.copy()
     if todas_las_columnas_en is None:
         todas_las_columnas_en = list(df_staging_copy.columns)
         # Recalcular mapas si se cargó en este mismo run
         col_map_ui_to_en = {translate_column(lang, col): col for col in todas_las_columnas_en}
-        todas_las_columnas_ui = sorted([translate_column(lang, col) for col in todas_las_columnas_en])
+        # --- [INICIO] MODIFICACIÓN (FIX DE ORDEN DE COLUMNA) ---
+        # Se elimina sorted() aquí también para consistencia.
+        todas_las_columnas_ui = [translate_column(lang, col) for col in todas_las_columnas_en]
+        # --- [FIN] MODIFICACIÓN ---
 
 
 if df_staging_copy is not None:
     try:
-        # Ya no necesitamos 'col_map_en_to_es'
         render_active_filters(lang)
 
         resultado_df = aplicar_filtros_dinamicos(
@@ -119,16 +110,14 @@ if df_staging_copy is not None:
         
         if view_type == get_text(lang, 'view_type_detailed'):
             
-            # Advertencia sobre hotkeys durante la carga
             st.warning(get_text(lang, 'hotkey_loading_warning'))
             
-            # col_map_ui_to_en ya está calculado y es correcto
             with st.spinner("Cargando editor..."):
                 render_detailed_view(
                     lang=lang, 
                     resultado_df_filtrado=resultado_df, 
                     df_master_copy=df_staging_copy, 
-                    col_map_ui_to_en=col_map_ui_to_en, # <-- Pasamos el mapa corregido
+                    col_map_ui_to_en=col_map_ui_to_en,
                     todas_las_columnas_en=todas_las_columnas_en
                 )
             
@@ -136,17 +125,15 @@ if df_staging_copy is not None:
             render_grouped_view(
                 lang, 
                 resultado_df, 
-                col_map_ui_to_en, # <-- Pasamos el mapa corregido
+                col_map_ui_to_en,
                 todas_las_columnas_en
             )
     
-    # --- ESTE ES EL BLOQUE QUE FALTABA ---
     except Exception as e:
         st.error(f"Error inesperado en la aplicación: {e}")
         st.exception(e) 
         clear_state_and_prepare_reload()
         st.rerun()
-    # --- FIN DEL BLOQUE CORREGIDO ---
 
 else:
     if not uploaded_files: 
