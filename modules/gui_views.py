@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN CON RERUN RESTAURADO EN GUARDADO)
+# modules/gui_views.py (VERSIÓN CON CORRECCIÓN DE ESTADO DE EDITOR)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -15,10 +15,8 @@ def render_active_filters(lang):
     """
     Muestra los filtros activos en la parte superior de la página.
     Permite a los usuarios eliminar filtros individualmente o todos a la vez.
-    
-    Args:
-        lang (str): El código de idioma actual (ej. 'es', 'en').
     """
+    # (Función sin cambios)
     st.markdown(f"## {get_text(lang, 'active_filters_header')}")
     
     if not st.session_state.filtros_activos:
@@ -52,11 +50,8 @@ def render_active_filters(lang):
 def render_kpi_dashboard(lang, resultado_df):
     """
     Muestra el dashboard de KPIs (Total Facturas, Monto Total, Monto Promedio).
-    
-    Args:
-        lang (str): El código de idioma actual.
-        resultado_df (pd.DataFrame): El DataFrame (ya filtrado) para calcular los KPIs.
     """
+    # (Función sin cambios)
     st.markdown(f"## {get_text(lang, 'kpi_header')}")
     
     try:
@@ -86,6 +81,10 @@ def render_kpi_dashboard(lang, resultado_df):
 def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui_to_en, todas_las_columnas_en):
     """
     Muestra la vista detallada principal con el editor de datos (st.data_editor).
+    
+    --- MODIFICACIÓN VISUAL ---
+    Añade un indicador 🚩 al *índice* de la fila (columna congelada)
+    si la fila es de "Maxima Prioridad" para visibilidad instantánea.
     """
     
     hotkeys.activate([
@@ -113,11 +112,32 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     df_display = df_vista_detallada.copy()
     df_display.columns = [translate_column(lang, col) for col in df_display.columns]
     
+    # --- [INICIO] LÓGICA DE INDICADOR EN EL ÍNDICE ---
+    # Comprueba la prioridad de las filas *filtradas*
+    if 'Priority' in resultado_df_filtrado.columns:
+        try:
+            # Crea una máscara booleana (ej. [False, True, False])
+            is_max_priority = (resultado_df_filtrado['Priority'] == "🚩 Maxima Prioridad")
+            
+            # Usa np.where para crear el nuevo índice
+            new_index = np.where(
+                is_max_priority, 
+                "🚩 " + df_display.index.astype(str), # E.j: "🚩 123"
+                df_display.index.astype(str)           # E.j: "124"
+            )
+            
+            # Asigna el nuevo índice (que ahora contiene strings) al DataFrame
+            df_display.index = new_index
+        except Exception as e:
+            st.warning(f"No se pudo aplicar el indicador de prioridad al índice: {e}")
+    # --- [FIN] LÓGICA DE INDICADOR EN EL ÍNDICE ---
+
     configuracion_columnas = {}
     
     date_format_help_text = get_text(lang, 'date_format_help')
     cached_options = st.session_state.get('autocomplete_options', {})
 
+    # (Lógica de autocompletado restaurada, sin cambios)
     for col_ui in df_display.columns:
         col_en = col_map_ui_to_en.get(col_ui, col_ui) 
         
@@ -141,27 +161,38 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     current_data_hash = hash((filtros_json_string, columnas_tuple))
     current_lang_hash = hash(st.session_state.language)
     
-    # Esta lógica simplificada (que introduje en el paso anterior)
-    # previene el "crash" al cambiar de idioma.
+    # --- [INICIO] CORRECCIÓN DE BUG 1 (Estado Retardado) ---
+    # Este bloque ahora se ejecuta *DESPUÉS* de que df_display
+    # haya sido modificado con las banderas 🚩 en el índice.
     if 'editor_state' not in st.session_state or \
        st.session_state.current_data_hash != current_data_hash or \
        st.session_state.current_lang_hash != current_lang_hash:
         
+        # Ahora df_display.copy() ya contiene los índices correctos
         st.session_state.editor_state = df_display.copy() 
         st.session_state.current_data_hash = current_data_hash
         st.session_state.current_lang_hash = current_lang_hash
+    # --- [FIN] CORRECCIÓN DE BUG 1 ---
 
     def callback_add_row():
         """
         Callback para el botón 'Añadir Fila' o hotkey 'Ctrl+I'.
         Añade una fila vacía al 'editor_state' con un índice único.
         """
+        # (Función sin cambios)
         df_editado = st.session_state.editor_state
         
         max_index = df_master_copy.index.max()
         if not df_editado.empty:
-            max_index = max(max_index, df_editado.index.max())
-        new_index = max_index + 1
+            clean_indices = pd.to_numeric(
+                pd.Series(df_editado.index).astype(str).str.replace("🚩 ", ""),
+                errors='coerce'
+            ).dropna()
+            
+            if not clean_indices.empty:
+                 max_index = max(max_index, clean_indices.max())
+
+        new_index = int(max_index + 1) 
 
         default_values = {}
         for col in df_editado.columns:
@@ -188,7 +219,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         width='stretch', 
         height=600,
         key="main_data_editor",
-        hide_index=False
+        hide_index=False 
     )
 
     # --- 3. DEFINICIÓN DE CALLBACKS DE ACCIÓN (Guardar/Revertir) ---
@@ -196,27 +227,27 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     def _callback_guardar_borrador():
         """
         (Ctrl+S) Guarda el estado del editor en 'df_staging' (Archivo 2: Borrador).
+        
+        --- MODIFICACIÓN ---
+        Limpia el indicador 🚩 del índice antes de procesar
+        y re-calcula la prioridad (con 🚩) en cada guardado.
         """
         
         try:
+            # 1. Obtener los datos del editor
             df_edited_view_ui = editor_return_value.copy()
             
-            col_status_en = "Row Status"
-            col_status_ui = translate_column(lang, col_status_en)
-            if col_status_ui in df_edited_view_ui.columns:
-                cols_to_check = [col for col in df_edited_view_ui.columns if col != col_status_ui]
-                df_check = df_edited_view_ui[cols_to_check].fillna("").astype(str)
-                blank_mask = (df_check == "") | (df_check == "0")
-                incomplete_rows = blank_mask.any(axis=1)
-                df_edited_view_ui[col_status_ui] = np.where(
-                    incomplete_rows,
-                    get_text(lang, 'status_incomplete'),
-                    get_text(lang, 'status_complete')
-                )
-            
+            # --- [INICIO] LIMPIEZA DE ÍNDICE ---
+            df_edited_view_ui.index = pd.to_numeric(
+                df_edited_view_ui.index.astype(str).str.replace("🚩 ", "")
+            )
+            # --- [FIN] LIMPIEZA DE ÍNDICE ---
+
+            # 2. Traducir columnas de la vista (UI) al inglés (EN) para procesar
             df_to_merge_en = df_edited_view_ui.copy()
             df_to_merge_en.columns = [col_map_ui_to_en.get(col_ui, col_ui) for col_ui in df_to_merge_en.columns]
 
+            # 3. Formatear Fechas (antes de fusionar)
             current_lang = st.session_state.language
             dayfirst = (current_lang == 'es')
             target_format = get_text(current_lang, 'date_format_es' if current_lang == 'es' else 'date_format_en')
@@ -230,6 +261,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                         df_to_merge_en[col_en] = date_col.dt.strftime(target_format)
                         df_to_merge_en[col_en] = df_to_merge_en[col_en].astype(str).replace('NaT', '').replace('nan', '')
 
+            # 4. Fusionar cambios con el DataFrame 'staging' maestro
             df_master_staging = st.session_state.df_staging.copy()
 
             existing_rows_en = df_to_merge_en[df_to_merge_en.index.isin(df_master_staging.index)]
@@ -238,28 +270,106 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             df_master_staging.update(existing_rows_en)
             df_master_staging = pd.concat([new_rows_en, df_master_staging])
             
+            # 5.A. Re-calcular 'Row Status'
+            col_status_en = "Row Status"
+            if col_status_en in df_master_staging.columns:
+                cols_to_check_master = [col for col in df_master_staging.columns if col != col_status_en]
+                df_check_master = df_master_staging[cols_to_check_master].fillna("").astype(str)
+                blank_mask_master = (df_check_master == "") | (df_check_master == "0")
+                incomplete_rows_master = blank_mask_master.any(axis=1)
+                df_master_staging[col_status_en] = np.where(
+                    incomplete_rows_master,
+                    get_text(lang, 'status_incomplete'),
+                    get_text(lang, 'status_complete')
+                )
+
+            # 5.B. Re-calcular 'Priority' (LÓGICA CORREGIDA)
+            if 'Pay Group' in df_master_staging.columns and 'Priority' in df_master_staging.columns:
+                pay_group_searchable = df_master_staging['Pay Group'].astype(str).str.upper()
+                high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"]
+                low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"]
+                
+                mask_high = pay_group_searchable.str.contains('|'.join(high_priority_terms), na=False)
+                mask_low = pay_group_searchable.str.contains('|'.join(low_priority_terms), na=False)
+                
+                # --- [INICIO] LÓGICA DE CÁLCULO CORREGIDA ---
+                
+                # 1. Define las prioridades "manuales" que NUNCA deben ser sobrescritas.
+                manual_priorities = ["Zero", "Low", "Medium", "High"]
+                mask_manual = df_master_staging['Priority'].isin(manual_priorities)
+                
+                # 2. Aplica las reglas en orden de precedencia usando np.select
+                conditions = [
+                    mask_manual, # 1. Si es manual, se queda como está.
+                    mask_high,   # 2. Si es 'high', pon '🚩 Maxima Prioridad'.
+                    mask_low     # 3. Si es 'low', pon 'Baja Prioridad'.
+                ]
+                
+                choices = [
+                    df_master_staging['Priority'], # 1. Usa el valor existente
+                    "🚩 Maxima Prioridad",         # 2.
+                    "Baja Prioridad"              # 3.
+                ]
+                
+                # El default es "" (vacío).
+                df_master_staging['Priority'] = np.select(conditions, choices, default="")
+                
+                # --- [FIN] LÓGICA DE CÁLCULO CORREGIDA ---
+            
+            # 6. Forzar tipos numéricos
             for col in df_master_staging.columns:
                 if 'Total' in col or 'Amount' in col or 'Age' in col or 'ID' in col or 'Number' in col:
                      df_master_staging[col] = pd.to_numeric(df_master_staging[col], errors='coerce').fillna(0)
             
+            # 7. Ordenar y guardar en 'staging'
             df_master_staging = df_master_staging.sort_index(ascending=True)
-            
             st.session_state.df_staging = df_master_staging.copy()
             
-            df_edited_view_ui_updated = df_to_merge_en.copy()
-            col_map_en_to_ui = {v: k for k, v in col_map_ui_to_en.items() if k in df_edited_view_ui.columns}
-            df_edited_view_ui_updated.columns = [col_map_en_to_ui.get(col_en, col_en) for col_en in df_edited_view_ui_updated.columns]
+            # 8. Actualizar el 'editor_state' (la vista)
             
-            st.session_state.editor_state = df_edited_view_ui_updated
+            # --- [INICIO] CORRECCIÓN DE BUG 2 (Columnas Ocultas) ---
             
-            # Se usa el mensaje de éxito original (restaurado en translator.py)
+            # Obtiene las columnas (EN) que el editor DEBERÍA tener,
+            # (basado en la sesión), no las que tenía (df_to_merge_en.columns)
+            columnas_visibles_en = st.session_state.columnas_visibles
+            
+            # Asegúrate de que todas las columnas que necesitas existan en el master
+            # (esto evita errores si se eliminó una columna, aunque no es el caso aquí)
+            columnas_a_usar = [col for col in columnas_visibles_en if col in df_master_staging.columns]
+
+            # Filtra el DF maestro (con datos recalculados) para que solo contenga
+            # las filas que estaban en la vista Y todas las columnas visibles
+            df_updated_view_en = df_master_staging[
+                df_master_staging.index.isin(df_to_merge_en.index) # Solo filas en la vista
+            ][columnas_a_usar] # TODAS las columnas visibles
+            
+            # Traduce las columnas de EN de nuevo a UI (Español/Inglés)
+            col_map_en_to_ui_full = {v: k for k, v in col_map_ui_to_en.items()}
+            
+            df_updated_view_ui = df_updated_view_en.copy()
+            df_updated_view_ui.columns = [col_map_en_to_ui_full.get(col_en, col_en) for col_en in df_updated_view_ui.columns]
+            
+            # --- [FIN] CORRECCIÓN DE BUG 2 ---
+
+            # --- [INICIO] RE-APLICAR INDICADOR 🚩 AL ÍNDICE DEL EDITOR ---
+            if 'Priority' in df_updated_view_en.columns: # Usa el DF en inglés (limpio)
+                is_max_priority_editor = (df_updated_view_en['Priority'] == "🚩 Maxima Prioridad")
+                new_index_editor = np.where(
+                    is_max_priority_editor, 
+                    "🚩 " + df_updated_view_ui.index.astype(str), 
+                    df_updated_view_ui.index.astype(str)
+                )
+                df_updated_view_ui.index = new_index_editor
+            # --- [FIN] RE-APLICAR INDICADOR 🚩 AL ÍNDICE DEL EDITOR ---
+            
+            st.session_state.editor_state = df_updated_view_ui
+            
             st.success(get_text(lang, 'save_success_message'))
 
         except Exception as e:
             st.error(f"Error al guardar el borrador: {e}")
             st.exception(e)
 
-    # --- [INICIO] MODIFICACIÓN (Restauración del "parpadeo") ---
     def _callback_guardar_borrador_and_rerun():
         """
         Función wrapper que ejecuta el guardado Y LUEGO un rerun.
@@ -267,7 +377,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         """
         _callback_guardar_borrador()
         st.rerun()
-    # --- [FIN] MODIFICACIÓN ---
 
     def _callback_guardar_estable():
         """
@@ -308,8 +417,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         )
 
     with col2:
-        # --- [INICIO] MODIFICACIÓN (Restauración del "parpadeo") ---
-        # El botón vuelve a llamar al wrapper que incluye el st.rerun().
         st.button(
             get_text(lang, 'save_changes_button'),
             on_click=_callback_guardar_borrador_and_rerun, 
@@ -317,7 +424,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             help=get_text(lang, 'save_changes_help'),
             type="primary" 
         )
-        # --- [FIN] MODIFICACIÓN ---
     
     with col3:
         st.button(
@@ -357,12 +463,9 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     elif hk_save_stable: 
         _callback_guardar_estable() 
     
-    # --- [INICIO] MODIFICACIÓN (Restauración del "parpadeo") ---
-    # Se restaura el st.rerun() en el hotkey de guardado.
     elif hk_save_draft: 
         _callback_guardar_borrador() 
         st.rerun() 
-    # --- [FIN] MODIFICACIÓN ---
             
     # --- Descargas y Restauración Original ---
     st.markdown("---")
@@ -370,6 +473,12 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
     with col_dl1:
         df_para_descargar_editado = editor_return_value.copy()
+        
+        # --- CAMBIO: Limpia el índice antes de descargar ---
+        df_para_descargar_editado.index = pd.to_numeric(
+            df_para_descargar_editado.index.astype(str).str.replace("🚩 ", "")
+        )
+        
         df_para_descargar_editado.columns = [
             col_map_ui_to_en.get(col_ui, col_ui) 
             for col_ui in df_para_descargar_editado.columns
@@ -426,7 +535,7 @@ def render_grouped_view(lang, resultado_df, col_map_ui_to_en, todas_las_columnas
     
     columnas_agrupables_en = [
         "Vendor Name", "Status", "Assignee", "Operating Unit Name", 
-        "Pay Status", "Document Type", "Row Status"
+        "Pay Status", "Document Type", "Row Status", "Priority"
     ]
     opciones_agrupables_ui = [
         translate_column(lang, col) 
