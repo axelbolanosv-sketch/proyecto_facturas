@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN CON RE-FORMATEO DE FECHAS)
+# modules/translator.py (VERSIÓN CON BOTÓN DE MARCAS DE PRIORIDAD)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -94,6 +94,10 @@ LANGUAGES = {
         "visible_cols_toggle_button": "Activar/Desactivar Todas",
         "visible_cols_warning": "Por favor, seleccione al menos una columna para mostrar.",
         
+        # --- [INICIO] NUEVO TEXTO ---
+        "toggle_priority_button": "🚦 Mostrar/Ocultar Marcas de Prioridad",
+        # --- [FIN] NUEVO TEXTO ---
+        
         "view_type_header": "Tipo de Vista",
         "view_type_detailed": "Detallada",
         "view_type_grouped": "Agrupada",
@@ -133,11 +137,9 @@ LANGUAGES = {
         
         "editor_manual_save_warning": "⚠️ **Importante:** Sus cambios **no se guardan automáticamente** (ni con 'Enter'). Puede editar múltiples celdas. Haga clic en **'Guardar Borrador' (o Ctrl+S)** para guardar. Si cambia de idioma, filtros, o vista *antes* de guardar, sus ediciones se perderán.",
         
-        # --- INICIO DE MODIFICACIÓN (Formato de Fechas) ---
         "date_format_help": "Formato de guardado: DD-MM-AAAA. Se intentará analizar otros formatos (ej. 20220309).",
         "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
         "date_format_en": "%m-%d-%Y"  # Formato Mes-Día-Año
-        # --- FIN DE MODIFICACIÓN ---
     },
     "en": {
         "title": "Dynamic Invoice Search",
@@ -187,6 +189,10 @@ LANGUAGES = {
         "visible_cols_toggle_button": "Select/Deselect All",
         "visible_cols_warning": "Please select at least one column to display.",
         
+        # --- [INICIO] NUEVO TEXTO ---
+        "toggle_priority_button": "🚦 Show/Hide Priority Markers",
+        # --- [FIN] NUEVO TEXTO ---
+
         "view_type_header": "View Type",
         "view_type_detailed": "Detailed",
         "view_type_grouped": "Grouped",
@@ -224,13 +230,11 @@ LANGUAGES = {
         "editor_info_help_save": "Click 'Save Draft' to update row status.",
         "save_success_message": "Draft saved and status updated successfully!",
         
-        "editor_manual_save_warning": "⚠️ **Important:** Your changes are **not saved automatically** (not even with 'Enter'). You can edit multiple cells. Click **'Save Draft' (or Ctrl+S)** to save. If you change the language, filters, or view *before* saving, your edits will be lost.",
+        "editor_manual_save_warning": "⚠️ **Importante:** Your changes are **not saved automatically** (ni con 'Enter'). You can edit multiple cells. Click **'Guardar Borrador' (o Ctrl+S)** to save. If you change the language, filters, or view *before* saving, your edits will be lost.",
         
-        # --- INICIO DE MODIFICACIÓN (Formato de Fechas) ---
         "date_format_help": "Save format: MM-DD-AAAA. Other formats (e.g., 20220309) will be auto-parsed.",
         "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
         "date_format_en": "%m-%d-%Y"  # Formato Mes-Día-Año
-        # --- FIN DE MODIFICACIÓN ---
     }
 }
 

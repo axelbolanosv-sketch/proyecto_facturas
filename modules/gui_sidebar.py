@@ -1,4 +1,4 @@
-# modules/gui_sidebar.py (VERSIÓN CON FIX DE ORDEN DE COLUMNAS MANUAL)
+# modules/gui_sidebar.py (VERSIÓN CON BOTÓN DE MARCAS DE PRIORIDAD)
 # Contiene toda la lógica para renderizar la barra lateral.
 
 import streamlit as st
@@ -115,26 +115,19 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 translate_column(lang, col) for col in st.session_state.columnas_visibles
             ]
 
-        # --- [INICIO] MODIFICACIÓN (FIX DE ORDEN DE COLUMNA) ---
         def callback_update_cols_from_multiselect():
             """
             Actualiza la lista de columnas visibles basado en la selección del
             multiselect, PERO preservando el orden original del archivo.
             """
-            # 1. Obtiene las columnas seleccionadas (en el idioma de la UI)
             columnas_seleccionadas_ui = st.session_state.visible_cols_multiselect
             
-            # 2. Crea la nueva lista de columnas visibles (en Inglés)
-            # Itera sobre la lista COMPLETA original (todas_las_columnas_en)
-            # y mantiene solo aquellas cuya traducción esté en la lista seleccionada.
             columnas_seleccionadas_en = [
                 col_en for col_en in todas_las_columnas_en
                 if translate_column(lang, col_en) in columnas_seleccionadas_ui
             ]
             
-            # 3. Guarda la nueva lista ordenada en el estado
             st.session_state.columnas_visibles = columnas_seleccionadas_en
-        # --- [FIN] MODIFICACIÓN ---
 
         st.sidebar.button(
             get_text(lang, 'visible_cols_toggle_button'), 
@@ -147,11 +140,29 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
         
         st.sidebar.multiselect(
             get_text(lang, 'visible_cols_select'),
-            options=todas_las_columnas_ui, # Esta lista ya viene en el orden original desde app.py
+            options=todas_las_columnas_ui, 
             default=defaults_ui,
             key='visible_cols_multiselect',
-            on_change=callback_update_cols_from_multiselect # <-- Llama al callback corregido
+            on_change=callback_update_cols_from_multiselect 
         )
+        
+        # --- [INICIO] NUEVO BOTÓN DE MARCAS DE PRIORIDAD ---
+        st.sidebar.markdown("---")
+        
+        def callback_toggle_markers():
+            """Activa o desactiva la visualización de marcadores de prioridad."""
+            st.session_state.show_priority_markers = not st.session_state.show_priority_markers
+            # Forzamos un rerun para que la vista detallada se actualice
+            st.rerun()
+
+        st.sidebar.button(
+            get_text(lang, 'toggle_priority_button'), 
+            key="toggle_priority_button",
+            on_click=callback_toggle_markers,
+            use_container_width=True
+        )
+        # --- [FIN] NUEVO BOTÓN ---
+
 
     # Retornamos los archivos cargados para que el app.py principal sepa si debe procesar.
     return uploaded_files
