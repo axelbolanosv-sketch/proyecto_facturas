@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN CON LÓGICA DE 🚩 LIMPIA Y CORREGIDA)
+# modules/gui_views.py (VERSIÓN CON LÓGICA DE PRIORIDAD CORREGIDA)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -112,15 +112,11 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     si la fila es de "Maxima Prioridad" para visibilidad instantánea.
     """
     
-    # 'hotkeys.activate': Registra los atajos de teclado (Ctrl+I, Ctrl+S, etc.).
-    hotkeys.activate([
-        hotkeys.hk("add_row", "i", ctrl=True, prevent_default=True, help="Insertar Fila (Ctrl+I)"), 
-        hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True, help="Guardar Borrador (Ctrl+S)"),
-        hotkeys.hk("save_stable", "s", ctrl=True, shift=True, prevent_default=True, help="Guardar Estable (Ctrl+Shift+S)"),
-        hotkeys.hk("revert_stable", "z", ctrl=True, prevent_default=True, help="Revertir a Estable (Ctrl+Z)"),
-    ],
-        key='main_hotkeys'
-    )
+    # --- [INICIO] CORRECCIÓN DE HOTKEYS ---
+    # Se elimina la llamada a hotkeys.activate([...]) de aquí.
+    # Ahora se llama de forma centralizada en app.py para evitar
+    # conflictos con la lógica st.rerun() / st.stop().
+    # --- [FIN] CORRECCIÓN DE HOTKEYS ---
 
     # 'st.session_state.columnas_visibles': Verifica que el usuario tenga columnas seleccionadas.
     if not st.session_state.columnas_visibles:
@@ -149,8 +145,8 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     if 'Priority' in resultado_df_filtrado.columns:
         try:
             # 'is_max_priority': Crea una máscara booleana (ej. [False, True, False])
-            # [CORRECCIÓN 1/3]: Se busca el texto limpio "Maxima Prioridad" (o el texto con bandera,
-            # por retrocompatibilidad, por si acaso) en la *columna* de datos.
+            # Se busca el texto limpio "Maxima Prioridad" (o el texto con bandera,
+            # por retrocompatibilidad) en la *columna* de datos.
             is_max_priority = (resultado_df_filtrado['Priority'] == "Maxima Prioridad") | (resultado_df_filtrado['Priority'] == "🚩 Maxima Prioridad")
             
             # 'np.where': Usa np.where para crear el nuevo índice
@@ -361,48 +357,52 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                     get_text(lang, 'status_complete')
                 )
 
-            # --- [INICIO] LÓGICA DE PRIORIDAD (CORREGIDA) ---
+            # --- [INICIO] LÓGICA DE PRIORIDAD (CORREGIDA PARA RE-EVALUACIÓN) ---
             # 5.B. Re-calcular 'Priority'
             if 'Pay Group' in df_master_staging.columns and 'Priority' in df_master_staging.columns:
                 
-                # 'df_master_staging['Priority']': Asegura que sea string
-                df_master_staging['Priority'] = df_master_staging['Priority'].astype(str)
-
-                # 1. 'manual_priorities': Define prioridades "manuales"
+                # 1. 'manual_priorities': Define prioridades "manuales" que NUNCA deben ser sobrescritas.
                 manual_priorities = ["Zero", "Low", "Medium", "High"]
-                mask_manual = df_master_staging['Priority'].isin(manual_priorities)
+                # 'mask_manual': Máscara booleana (True) para filas con prioridad manual.
+                mask_manual = df_master_staging['Priority'].astype(str).isin(manual_priorities)
 
-                # 2. 'pay_group_searchable': Define prioridades automáticas (Pay Group)
+                # 2. 'pay_group_searchable': Calcula la prioridad AUTOMÁTICA basada SOLAMENTE en el Pay Group.
                 pay_group_searchable = df_master_staging['Pay Group'].astype(str).str.upper()
+                # 'high_priority_terms': Lista de términos de alta prioridad.
                 high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"]
+                # 'low_priority_terms': Lista de términos de baja prioridad.
                 low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"]
+                
+                # 'mask_high': Máscara booleana (True) para Pay Groups altos.
                 mask_high = pay_group_searchable.str.contains('|'.join(high_priority_terms), na=False)
+                # 'mask_low': Máscara booleana (True) para Pay Groups bajos.
                 mask_low = pay_group_searchable.str.contains('|'.join(low_priority_terms), na=False)
 
-                # 3. 'mask_excel_maxima': Define la máscara para "Maxima Prioridad" (con o sin 🚩)
-                #    Esto es por retrocompatibilidad, por si el dato 'viejo' aún tiene la bandera.
-                mask_excel_maxima = (df_master_staging['Priority'] == "Maxima Prioridad") | (df_master_staging['Priority'] == "🚩 Maxima Prioridad")
+                # 3. 'auto_conditions': Define las condiciones automáticas
+                auto_conditions = [
+                    mask_high,  # 1. Si Pay Group es high
+                    mask_low    # 2. Si Pay Group es low
+                ]
+                # 'auto_choices': Define los valores automáticos (limpios, sin 🚩)
+                auto_choices = [
+                    "Maxima Prioridad", # 1.
+                    "Baja Prioridad"    # 2.
+                ]
+                
+                # 'new_auto_priority': Esta es la prioridad que la fila *debería* tener.
+                # 'default=""': Si no es high ni low, la prioridad automática es "" (vacío).
+                new_auto_priority = np.select(auto_conditions, auto_choices, default="")
 
-                # 4. 'conditions': Aplica las reglas en orden
-                conditions = [
-                    mask_manual,                      # 1. Si es manual, se queda como está.
-                    mask_high,                        # 2. Si Pay Group es high -> Poner "Maxima Prioridad"
-                    mask_excel_maxima,                # 3. Si se escribió "Maxima Prioridad" (con o sin 🚩) -> Poner "Maxima Prioridad"
-                    mask_low                          # 4. Si Pay Group es low -> Poner "Baja Prioridad"
-                ]
-                
-                # [CORRECCIÓN 2/3]: Se guarda el texto limpio "Maxima Prioridad" (sin bandera) en los datos.
-                choices = [
-                    df_master_staging['Priority'],    # 1.
-                    "Maxima Prioridad",               # 2.
-                    "Maxima Prioridad",               # 3.
-                    "Baja Prioridad"                  # 4.
-                ]
-                
-                # 'np.select': El default es mantener el valor original
-                df_master_staging['Priority'] = np.select(conditions, choices, default=df_master_staging['Priority'])
+                # 4. 'np.where': Combina las prioridades.
+                # Si 'mask_manual' es True, usa el valor que ya tenía (ej. "High").
+                # Si es False, usa el valor recién calculado en 'new_auto_priority' (ej. "Baja Prioridad").
+                df_master_staging['Priority'] = np.where(
+                    mask_manual,                  # Condición
+                    df_master_staging['Priority'], # Valor si True (Mantiene el valor manual)
+                    new_auto_priority              # Valor si False (Aplica el valor automático calculado)
+                )
             
-            # --- [FIN] LÓGICA DE PRIORIDAD (CORREGIDA) ---
+            # --- [FIN] LÓGICA DE PRIORIDAD (CORREGIDA PARA RE-EVALUACIÓN) ---
             
             # 6. Forzar tipos numéricos.
             for col in df_master_staging.columns:
@@ -433,7 +433,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             # --- [INICIO] RE-APLICAR INDICADOR 🚩 AL ÍNDICE DEL EDITOR ---
             if 'Priority' in df_updated_view_en.columns: # Usa el DF en inglés (limpio)
                 
-                # [CORRECCIÓN 3/3]: Se lee el texto limpio "Maxima Prioridad" (o el texto con bandera,
+                # Se lee el texto limpio "Maxima Prioridad" (o el texto con bandera,
                 # por retrocompatibilidad) para volver a poner la bandera en el índice.
                 is_max_priority_editor = (df_updated_view_en['Priority'] == "Maxima Prioridad") | (df_updated_view_en['Priority'] == "🚩 Maxima Prioridad")
                 
@@ -542,6 +542,8 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
     # --- 5. MANEJO DE EVENTOS (HOTKEYS) ---
     
+    # 'hk_...': Lee el estado de las hotkeys (registradas en app.py).
+    # 'key='main_hotkeys'': Asegura que leemos del componente correcto.
     hk_add_row = hotkeys.pressed("add_row", key='main_hotkeys')
     hk_save_stable = hotkeys.pressed("save_stable", key='main_hotkeys')
     hk_save_draft = hotkeys.pressed("save_draft", key='main_hotkeys')
@@ -563,7 +565,9 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     
     # 'hk_save_draft': Si se presiona Ctrl+S...
     elif hk_save_draft: 
+        # ' _callback_guardar_borrador()': Llama a la función de guardado.
         _callback_guardar_borrador() 
+        # 'st.rerun()': Recarga la página para mostrar los cambios.
         st.rerun() 
             
     # --- Descargas y Restauración Original ---

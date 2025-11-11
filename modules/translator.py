@@ -1,6 +1,7 @@
-# modules/translator.py (VERSIÓN CON BOTÓN DE MARCAS DE PRIORIDAD)
+# modules/translator.py (VERSIÓN CON TEXTO OBSOLETO ELIMINADO)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
+# (Esta sección no tiene cambios)
 COLUMN_TRANSLATIONS = {
     "Invoice #": "Nº Factura",
     "Header ID": "ID Encabezado",
@@ -94,9 +95,9 @@ LANGUAGES = {
         "visible_cols_toggle_button": "Activar/Desactivar Todas",
         "visible_cols_warning": "Por favor, seleccione al menos una columna para mostrar.",
         
-        # --- [INICIO] NUEVO TEXTO ---
-        "toggle_priority_button": "🚦 Mostrar/Ocultar Marcas de Prioridad",
-        # --- [FIN] NUEVO TEXTO ---
+        # --- [INICIO] ELIMINACIÓN DE TEXTO OBSOLETO ---
+        # 'toggle_priority_button': '🚦 Mostrar/Ocultar Marcas de Prioridad',
+        # --- [FIN] ELIMINACIÓN DE TEXTO OBSOLETO ---
         
         "view_type_header": "Tipo de Vista",
         "view_type_detailed": "Detallada",
@@ -189,9 +190,9 @@ LANGUAGES = {
         "visible_cols_toggle_button": "Select/Deselect All",
         "visible_cols_warning": "Please select at least one column to display.",
         
-        # --- [INICIO] NUEVO TEXTO ---
-        "toggle_priority_button": "🚦 Show/Hide Priority Markers",
-        # --- [FIN] NUEVO TEXTO ---
+        # --- [INICIO] ELIMINACIÓN DE TEXTO OBSOLETO ---
+        # 'toggle_priority_button': '🚦 Show/Hide Priority Markers',
+        # --- [FIN] ELIMINACIÓN DE TEXTO OBSOLETO ---
 
         "view_type_header": "View Type",
         "view_type_detailed": "Detailed",
@@ -243,6 +244,8 @@ def get_text(language, key):
     Obtiene el texto traducido de la UI.
     Si no se encuentra la clave, devuelve la clave misma.
     """
+    # 'LANGUAGES.get(language, {})': Obtiene el diccionario del idioma, o uno vacío si no existe.
+    # '.get(key, key)': Obtiene el texto de la clave, o devuelve la clave misma si no se encuentra.
     return LANGUAGES.get(language, {}).get(key, key)
 
 def translate_column(language, column_name):
@@ -250,6 +253,9 @@ def translate_column(language, column_name):
     Traduce un nombre de columna de inglés a español.
     Si el idioma es 'en' o no se encuentra traducción, devuelve el original.
     """
+    # 'if language == 'es'': Solo traduce si el idioma es español.
     if language == 'es':
+        # 'COLUMN_TRANSLATIONS.get(...)': Busca en el mapa; si no encuentra, devuelve el nombre original.
         return COLUMN_TRANSLATIONS.get(column_name, column_name)
+    # 'return column_name': Devuelve el nombre original (inglés) si el idioma es 'en'.
     return column_name
