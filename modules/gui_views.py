@@ -1,4 +1,4 @@
-# modules/gui_views.py (VERSIÓN CON FIX DE FILTRO Y SPINNER)
+# modules/gui_views.py (VERSIÓN CON FIX DE FILTRO, SPINNER y HASH DE ORDEN)
 # Contiene la lógica para renderizar el contenido de la página principal.
 
 import streamlit as st
@@ -85,14 +85,6 @@ def render_kpi_dashboard(lang, resultado_df):
 def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui_to_en, todas_las_columnas_en):
     """
     Muestra la vista detallada principal con el editor de datos (st.data_editor).
-    
-    --- MODIFICACIÓN VISUAL (Issue 2) ---
-    El st.spinner y st.warning se movieron aquí desde app.py para
-    asegurar que sean visibles incluso cuando el usuario ha hecho scroll.
-    
-    --- MODIFICACIÓN DE LÓGICA (Issue 1) ---
-    Se modifica '_callback_guardar_borrador' para resetear el 'editor_state',
-    forzando que los filtros se apliquen visualmente después de guardar.
     """
     
     # --- Lógica de Hotkeys/Columnas (Sin cambios) ---
@@ -149,21 +141,39 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                 required=False
             )
     
-    # --- Lógica de Hashing y "Flicker Fix" (Sin cambios) ---
+    # --- [INICIO] CAMBIO: Lógica de Hashing y "Flicker Fix" ---
+    
+    # 'filtros_json_string': Serializa los filtros
     filtros_json_string = json.dumps(st.session_state.filtros_activos, sort_keys=True)
+    # 'columnas_tuple': Serializa las columnas visibles
     columnas_tuple = tuple(st.session_state.columnas_visibles)
-    current_data_hash = hash((filtros_json_string, columnas_tuple))
+    # 'priority_sort_state': Obtiene el estado de ordenamiento
+    priority_sort_state = st.session_state.get('priority_sort_order', None)
+    
+    # 'current_data_hash': Combina filtros, columnas Y ordenamiento.
+    # Si cualquiera de estos 3 cambia, el hash será diferente.
+    current_data_hash = hash((filtros_json_string, columnas_tuple, priority_sort_state))
+    # 'current_lang_hash': Hash para el idioma
     current_lang_hash = hash(st.session_state.language)
     
+    # 'if 'editor_state' not in st.session_state...':
+    # Esta lógica ahora se activa si los filtros cambian, las columnas cambian,
+    # el idioma cambia, O el orden de prioridad cambia.
     if 'editor_state' not in st.session_state or \
        st.session_state.current_data_hash != current_data_hash or \
        st.session_state.current_lang_hash != current_lang_hash:
         
+        # 'st.session_state.editor_state = df_display.copy()':
+        # Reconstruye el estado del editor usando el 'df_display'
+        # (que viene del 'resultado_df_filtrado' YA ORDENADO en app.py)
         st.session_state.editor_state = df_display.copy() 
+        # 'st.session_state.current_data_hash': Actualiza el hash
         st.session_state.current_data_hash = current_data_hash
+        # 'st.session_state.current_lang_hash': Actualiza el hash de idioma
         st.session_state.current_lang_hash = current_lang_hash
         st.rerun()
         st.stop()
+    # --- [FIN] CAMBIO ---
         
     # --- Definición de 'callback_add_row' (Sin cambios) ---
     def callback_add_row():
@@ -206,23 +216,18 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     def _callback_guardar_borrador():
         """
         (Ctrl+S) Guarda el estado del editor en 'df_staging' (Archivo 2: Borrador).
-        
-        --- MODIFICACIÓN (Issue 1) ---
-        Añade 'st.session_state.editor_state = None' al final
-        para forzar la recarga del editor y que los filtros se apliquen
-        visualmente de inmediato.
         """
         
         try:
+            # (Lógica de guardado sin cambios respecto a la versión anterior de 4 niveles)
+            
             # 1. 'df_edited_view_ui': Obtiene los datos del editor.
             df_edited_view_ui = editor_return_value.copy()
             
             # --- 2. LIMPIEZA DE ÍNDICE Y TRADUCCIÓN (Sin cambios) ---
-            # 'df_edited_view_ui.index': Limpia cualquier bandera 🚩 del índice.
             df_edited_view_ui.index = pd.to_numeric(
                 df_edited_view_ui.index.astype(str).str.replace("🚩 ", "")
             )
-            # 'df_to_merge_en': Traduce columnas de UI (ES) a Inglés (EN).
             df_to_merge_en = df_edited_view_ui.copy()
             df_to_merge_en.columns = [col_map_ui_to_en.get(col_ui, col_ui) for col_ui in df_to_merge_en.columns]
 
@@ -258,23 +263,35 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                     get_text(lang, 'status_complete')
                 )
 
-            # --- 5.B. Re-calcular 'Priority' (Sin cambios) ---
+            # --- 5.B. Re-calcular 'Priority' con 4 NIVELES (Sin cambios) ---
             if 'Pay Group' in df_master_staging.columns and 'Priority' in df_master_staging.columns:
-                manual_priorities = ["Zero", "Low", "Medium", "High"]
+                
+                manual_priorities = ["Minima", "Media", "Alta"] 
                 mask_manual = df_master_staging['Priority'].astype(str).isin(manual_priorities)
+                
                 pay_group_searchable = df_master_staging['Pay Group'].astype(str).str.upper()
                 high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"]
                 low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"]
                 mask_high = pay_group_searchable.str.contains('|'.join(high_priority_terms), na=False)
                 mask_low = pay_group_searchable.str.contains('|'.join(low_priority_terms), na=False)
-                auto_conditions = [mask_high, mask_low]
-                auto_choices = ["Maxima Prioridad", "Baja Prioridad"]
-                new_auto_priority = np.select(auto_conditions, auto_choices, default="")
-                df_master_staging['Priority'] = np.where(
-                    mask_manual,
-                    df_master_staging['Priority'], 
-                    new_auto_priority              
-                )
+
+                mask_excel_maxima = (df_master_staging['Priority'] == "Maxima Prioridad") | (df_master_staging['Priority'] == "🚩 Maxima Prioridad")
+
+                conditions = [
+                    mask_manual,                      
+                    mask_high,                        
+                    mask_excel_maxima,                
+                    mask_low                          
+                ]
+                
+                choices = [
+                    df_master_staging['Priority'],    
+                    "🚩 Maxima Prioridad",             
+                    "🚩 Maxima Prioridad",             
+                    "Minima"                          
+                ]
+                
+                df_master_staging['Priority'] = np.select(conditions, choices, default=df_master_staging['Priority'])
             
             # --- 6. Forzar tipos numéricos (Sin cambios) ---
             for col in df_master_staging.columns:
@@ -285,28 +302,14 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             df_master_staging = df_master_staging.sort_index(ascending=True)
             st.session_state.df_staging = df_master_staging.copy()
             
-            # --- 8. [INICIO] CAMBIO (Issue 1): Forzar reseteo del editor ---
-            # Se elimina la lógica anterior que actualizaba 'editor_state' manualmente.
-            #
-            # Al establecer el 'editor_state' en None, forzamos
-            # a que la lógica 'if editor_state not in...' de 
-            # 'render_detailed_view' se active en el próximo rerun.
-            # Esto garantiza que el 'editor_state' se reconstruya
-            # a partir del 'resultado_df_filtrado' (que ya estará
-            # actualizado por el 'app.py'), haciendo que la fila
-            # (ej. "bob") desaparezca visualmente del filtro (ej. "angie").
+            # --- 8. Forzar reseteo del editor (Sin cambios) ---
             st.session_state.editor_state = None
-            # 'st.session_state.current_data_hash': Resetea el hash
             st.session_state.current_data_hash = None 
-            # 'st.session_state.current_lang_hash': Resetea el hash de idioma
             st.session_state.current_lang_hash = None
-            # --- [FIN] CAMBIO (Issue 1) ---
             
-            # 'st.success': Mensaje de éxito.
             st.success(get_text(lang, 'save_success_message'))
 
         except Exception as e:
-            # 'st.error': Manejo de errores.
             st.error(f"Error al guardar el borrador: {e}")
             st.exception(e)
 
@@ -346,20 +349,11 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
     # --- 4. RENDERIZADO DE BOTONES DE CONTROL ---
     
-    # --- [INICIO] CAMBIO (Issue 2): Mover Spinner y Warning aquí ---
-    # 'st.warning': Mensaje importante sobre el guardado manual.
-    # Se movió aquí desde app.py para que esté pegado al editor.
+    # (Sección sin cambios)
     st.warning(get_text(lang, 'editor_manual_save_warning'))
     
-    # 'with st.spinner': Se movió aquí desde app.py.
-    # Ahora el spinner aparece justo donde se carga el editor,
-    # lo que lo hace visible incluso si el usuario hizo scroll.
-    # La advertencia de 'hotkey_loading_warning' se AÑADE al texto del spinner.
     spinner_text = f"Cargando editor... {get_text(lang, 'hotkey_loading_warning')}"
     with st.spinner(spinner_text):
-        # 'editor_return_value': Renderiza el editor y captura sus datos actuales.
-        # Esta línea ahora solo se ejecutará en un "Run limpio" (Run 3)
-        # y se mostrará dentro del spinner.
         editor_return_value = st.data_editor(
             st.session_state.editor_state,
             column_config=configuracion_columnas, 
@@ -369,11 +363,9 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             key="main_data_editor",
             hide_index=False 
         )
-    # --- [FIN] CAMBIO (Issue 2) ---
     
     st.markdown(f"#### {get_text(lang, 'editor_actions_header')}")
     
-    # --- Lógica de botones (Sin cambios) ---
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.button(

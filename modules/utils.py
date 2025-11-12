@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN CON LÓGICA DE 🚩 HOMOLOGADA)
+# modules/gui_utils.py (VERSIÓN CON LÓGICA DE 🚩 HOMOLOGADA y 4 NIVELES + ESTADO DE ORDEN)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -9,9 +9,13 @@ from modules.translator import get_text
 
 # --- 1. Inicializar el 'Session State' ---
 def initialize_session_state():
-    """Define el estado inicial de la sesión de Streamlit."""
-    # (El código existente permanece igual...)
+    """
+    Define el estado inicial de la sesión de Streamlit.
+    (Esta función es llamada al inicio de app.py)
+    """
+    # 'if 'filtros_activos' not in st.session_state:': Comprueba si la clave existe
     if 'filtros_activos' not in st.session_state:
+        # 'st.session_state.filtros_activos = []': Si no existe, la inicializa
         st.session_state.filtros_activos = []
     if 'language' not in st.session_state:
         st.session_state.language = 'es'
@@ -39,12 +43,23 @@ def initialize_session_state():
     if 'autocomplete_options' not in st.session_state:
         st.session_state.autocomplete_options = {}
 
+    # --- [INICIO] CAMBIO: Añadir estado de ordenamiento ---
+    # 'if 'priority_sort_order' not in st.session_state:':
+    # Esta es la línea que soluciona el 'AttributeError'.
+    # Inicializa el estado de ordenamiento personalizado.
+    if 'priority_sort_order' not in st.session_state:
+        # 'st.session_state.priority_sort_order = None':
+        # Puede ser 'DESC' (Maxima a Minima), 'ASC' (Minima a Maxima), o None (default).
+        st.session_state.priority_sort_order = None
+    # --- [FIN] CAMBIO ---
+
 # --- 2. FUNCIÓN DE DISEÑO (CSS) ---
 def load_custom_css():
     """
     Carga CSS personalizado en la aplicación Streamlit.
     (Incluye el resaltado rojo para 'Maxima Prioridad')
     """
+    # (Esta función no tiene cambios respecto a la versión anterior)
     st.markdown(
         """
         <style>
@@ -63,19 +78,21 @@ def load_custom_css():
             background-image: linear-gradient(to right, #FFDDDD, #FFDDDD) !important;
             color: #660000 !important; /* Oscurecer el texto para legibilidad */
         }
-        /* --- [INICIO] CSS RESTAURADO PARA EL INDICADOR 🚩 --- */
-        /* Resalta la fila si la *columna* Prioridad contiene la bandera */
         [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="🚩 Maxima Prioridad"]) {
             background-image: linear-gradient(to right, #FFDDDD, #FFDDDD) !important;
             color: #660000 !important; /* Oscurecer el texto para legibilidad */
         }
-        /* Resalta la celda de Prioridad que contiene la bandera */
+        [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="Maxima Prioridad"]) {
+            font-weight: 800 !important;
+            background-color: #FFC0C0 !important;
+            color: black !important;
+        }
         [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="🚩 Maxima Prioridad"]) {
             font-weight: 800 !important;
             background-color: #FFC0C0 !important;
             color: black !important;
         }
-        /* --- [FIN] CSS RESTAURADO --- */
+        /* --- [FIN] CSS --- */
 
         :root {
             --color-primario-azul: #004A99;
@@ -137,6 +154,7 @@ def load_custom_css():
 @st.cache_data
 def to_excel(df: pd.DataFrame):
     """Convierte un DataFrame a un archivo Excel en memoria."""
+    # (Función sin cambios)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Resultados')
@@ -148,12 +166,8 @@ def load_and_process_files(uploaded_files, lang):
     """
     Toma los archivos cargados, los combina, limpia (usando vectorización), 
     guarda las 3 copias y pre-calcula las opciones de autocompletar.
-    
-    --- OPTIMIZACIÓN ---
-    Se elimina el bucle 'for col in ...' para la limpieza de tipos.
-    En su lugar, se usan operaciones vectorizadas de Pandas, que son
-    significativamente más rÁpidas.
     """
+    # (Esta función es idéntica a la versión anterior de 4 niveles)
     try:
         lista_de_dataframes = []
         files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
@@ -192,47 +206,40 @@ def load_and_process_files(uploaded_files, lang):
             
             # --- [FIN] OPTIMIZACIÓN: LIMPIEZA VECTORIZADA ---
 
-            # --- [INICIO] LÓGICA DE PRIORIDAD (CORREGIDA Y HOMOLOGADA) ---
+            # --- [INICIO] LÓGICA DE PRIORIDAD (CORREGIDA Y HOMOLOGADA CON 4 NIVELES) ---
             
             if 'Pay Group' in df_processed.columns:
                 
-                # Asegura que la columna Prioridad exista y sea string
                 if 'Priority' not in df_processed.columns:
                     df_processed['Priority'] = "" 
                     columnas_originales.append('Priority') 
                 df_processed['Priority'] = df_processed['Priority'].astype(str)
 
-                # 1. Define las prioridades "manuales" que NUNCA deben ser sobrescritas.
-                manual_priorities = ["Zero", "Low", "Medium", "High"]
+                manual_priorities = ["Minima", "Media", "Alta"] 
                 mask_manual = df_processed['Priority'].isin(manual_priorities)
                 
-                # 2. Define las prioridades automáticas (basadas en Pay Group)
                 pay_group_searchable = df_processed['Pay Group'].astype(str).str.upper()
-                high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"]
-                low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"]
+                high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"] 
+                low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"] 
                 mask_high = pay_group_searchable.str.contains('|'.join(high_priority_terms), na=False)
                 mask_low = pay_group_searchable.str.contains('|'.join(low_priority_terms), na=False)
 
-                # 3. Define la máscara para "Maxima Prioridad" (del Excel) O si ya tiene la bandera
-                #    Esta es la corrección clave.
                 mask_excel_maxima = (df_processed['Priority'] == "Maxima Prioridad") | (df_processed['Priority'] == "🚩 Maxima Prioridad")
 
-                # 4. Aplica las reglas en orden de precedencia usando np.select
                 conditions = [
-                    mask_manual,                      # 1. Si es manual, se queda como está.
-                    mask_high,                        # 2. Si Pay Group es high -> Poner 🚩
-                    mask_excel_maxima,                # 3. Si Excel dice "Maxima Prioridad" (con o sin 🚩) -> Poner 🚩
-                    mask_low                          # 4. Si Pay Group es low -> Poner "Baja Prioridad"
+                    mask_manual,                      
+                    mask_high,                        
+                    mask_excel_maxima,                
+                    mask_low                          
                 ]
                 
                 choices = [
-                    df_processed['Priority'],         # 1. Usa el valor existente
-                    "🚩 Maxima Prioridad",             # 2.
-                    "🚩 Maxima Prioridad",             # 3.
-                    "Baja Prioridad"                  # 4.
+                    df_processed['Priority'],         
+                    "🚩 Maxima Prioridad",             
+                    "🚩 Maxima Prioridad",             
+                    "Minima"                          
                 ]
                 
-                # El default es mantener el valor original (ej. "" o cualquier otro valor)
                 df_processed['Priority'] = np.select(conditions, choices, default=df_processed['Priority'])
             
             # --- [FIN] LÓGICA DE PRIORIDAD (CORREGIDA Y HOMOLOGADA) ---
@@ -265,9 +272,8 @@ def load_and_process_files(uploaded_files, lang):
                 if col_en in df_processed.columns:
                     try:
                         if col_en == "Priority":
-                            base_options = ["", "Zero", "Low", "Medium", "High"]
-                            # --- MODIFICACIÓN: Añadir ambas versiones al autocompletar ---
-                            custom_options = ["Maxima Prioridad", "🚩 Maxima Prioridad", "Baja Prioridad"]
+                            base_options = ["", "Minima", "Media", "Alta"]
+                            custom_options = ["Maxima Prioridad", "🚩 Maxima Prioridad"]
                             actual_options = df_processed[col_en].astype(str).unique()
                             opciones = sorted(list(set(base_options + custom_options + list(actual_options))))
                         else:
@@ -310,3 +316,9 @@ def clear_state_and_prepare_reload():
     st.session_state.df_original = None
     st.session_state.df_staging = None
     st.session_state.autocomplete_options = {}
+    
+    # --- [INICIO] CAMBIO: Resetear el estado de ordenamiento ---
+    # 'st.session_state.priority_sort_order': Asegura que el orden se limpie
+    # al cargar un nuevo archivo.
+    st.session_state.priority_sort_order = None
+    # --- [FIN] CAMBIO ---
