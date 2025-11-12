@@ -1,4 +1,4 @@
-# modules/gui_sidebar.py (VERSIÓN CON REVERSIÓN ESTABLE AL QUITAR JSON)
+# modules/gui_sidebar.py (VERSIÓN CON GUARDADO/CARGA DE ORDENAMIENTO)
 # Contiene toda la lógica para renderizar la barra lateral.
 
 import streamlit as st
@@ -152,13 +152,19 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
         st.sidebar.markdown(f"### {get_text(lang, 'config_header')}")
         
         # 1. Widget de Descarga (Guardar Vista)
-        # (Lógica sin cambios)
+        #    (Se añade 'priority_sort_order' al diccionario)
         config_data = {
             "filtros_activos": st.session_state.get('filtros_activos', []),
             "columnas_visibles": st.session_state.get('columnas_visibles', todas_las_columnas_en),
             "language": st.session_state.get('language', 'es'),
             "view_type": st.session_state.get('view_type_radio', get_text(lang, 'view_type_detailed')),
-            "group_by_column": st.session_state.get('group_by_col_select', None)
+            "group_by_column": st.session_state.get('group_by_col_select', None),
+            
+            # --- [INICIO] CAMBIO: Añadir el estado de ordenamiento al JSON ---
+            # 'st.session_state.get(...)': Obtiene el estado del ordenamiento (None, 'ASC', o 'DESC')
+            # y lo guarda en el archivo JSON.
+            "priority_sort_order": st.session_state.get('priority_sort_order', None)
+            # --- [FIN] CAMBIO ---
         }
         json_string = json.dumps(config_data, indent=2)
 
@@ -206,6 +212,12 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 st.session_state.current_data_hash = None
                 st.session_state.current_lang_hash = None
                 
+                # --- [INICIO] CAMBIO: Resetear el ordenamiento ---
+                # 'st.session_state.priority_sort_order = None':
+                # Al quitar el JSON, también se resetea el orden a 'Default'.
+                st.session_state.priority_sort_order = None
+                # --- [FIN] CAMBIO ---
+                
                 # 'return': Termina la función. Streamlit hará un rerun.
                 return
             # --- [FIN] LÓGICA DE REVERSIÓN ESTABLE ---
@@ -238,6 +250,14 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 st.session_state.group_by_col_select = config_data.get(
                     "group_by_column", None
                 )
+                
+                # --- [INICIO] CAMBIO: Cargar el estado de ordenamiento ---
+                # 'st.session_state.priority_sort_order': Lee el valor de ordenamiento
+                # del JSON ('ASC', 'DESC', o None) y lo restaura en la sesión.
+                st.session_state.priority_sort_order = config_data.get(
+                    "priority_sort_order", None
+                )
+                # --- [FIN] CAMBIO ---
 
                 # 'st.rerun()': Se fuerza un rerun para aplicar todo.
                 st.rerun()

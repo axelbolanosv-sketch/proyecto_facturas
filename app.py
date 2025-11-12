@@ -1,4 +1,4 @@
-# app.py (VERSIÓN CON ORDENAMIENTO POR RADIO-BUTTON)
+# app.py (VERSIÓN CON ORDENAMIENTO "DEFAULT" CORREGIDO)
 # Este archivo actúa como el "director de orquesta", coordinando
 # los módulos de UI y utilidades.
 
@@ -25,8 +25,7 @@ from modules.gui_views import (
 import streamlit_hotkeys as hotkeys 
 
 # --- 2. Configuración Inicial ---
-# (Se llama a initialize_session_state() PRIMERO,
-#  lo que soluciona el 'AttributeError' en futuros reinicios)
+# (Se llama a initialize_session_state() PRIMERO)
 initialize_session_state()
 lang = st.session_state.language
 st.set_page_config(
@@ -113,27 +112,26 @@ if df_staging_copy is not None:
         
         if view_type == get_text(lang, 'view_type_detailed'):
             
-            # --- [INICIO] NUEVA LÓGICA DE ORDENAMIENTO (CON RADIO) ---
+            # --- [INICIO] LÓGICA DE ORDENAMIENTO (MULTI-NIVEL CORREGIDA) ---
             
             # 1. Definir el mapa de ordenamiento lógico
-            #    Se asignan valores numéricos a las prioridades.
             priority_map = {
-                "🚩 Maxima Prioridad": 4, # (Valor más alto)
-                "Maxima Prioridad": 4, # (Por si el usuario la escribe sin bandera)
+                "🚩 Maxima Prioridad": 4, 
+                "Maxima Prioridad": 4, 
                 "Alta": 3,
                 "Media": 2,
                 "Minima": 1,
-                # (Cualquier otra cosa, como "", será 0 por el .fillna(0) más abajo)
             }
             
             # 2. Definir las opciones del radio button
-            op_default = "Default (Sin Orden)"
+            # --- [INICIO] CAMBIO: Se actualiza el texto de 'op_default' ---
+            op_default = "Default (Sin Orden)" 
+            # --- [FIN] CAMBIO ---
             op_desc = "🔼 Maxima a Minima"
             op_asc = "🔽 Minima a Maxima"
             radio_options = [op_default, op_desc, op_asc]
             
             # 3. Mapear el estado actual a la opción del radio
-            #    'st.session_state.get()': Usamos .get() para leer de forma segura.
             current_sort_val = st.session_state.get('priority_sort_order', None)
             
             if current_sort_val == 'DESC':
@@ -144,9 +142,8 @@ if df_staging_copy is not None:
                 current_index = 0 # 'op_default'
             
             # 4. Renderizar el st.radio
-            #    Este widget reemplaza los 3 botones anteriores.
             selected_option = st.radio(
-                "Ordenar por Prioridad:",
+                "Ordenar por:", 
                 options=radio_options,
                 index=current_index,
                 horizontal=True,
@@ -161,42 +158,50 @@ if df_staging_copy is not None:
                 new_sort_val = 'DESC'
             elif selected_option == op_asc:
                 new_sort_val = 'ASC'
-            # (Si es 'op_default', new_sort_val permanece como None)
             
             # 6. Guardar el nuevo estado en la sesión
-            #    Esto persiste la elección del usuario.
             st.session_state.priority_sort_order = new_sort_val
 
-            # 7. Aplicar el ordenamiento al DataFrame (si se seleccionó)
+            # 7. Aplicar el ordenamiento al DataFrame
+            age_col_exists = 'Invoice Date Age' in resultado_df.columns
+            
+            # [Caso 1 y 2] El usuario seleccionó un orden de Prioridad (ASC o DESC)
             if new_sort_val is not None and 'Priority' in resultado_df.columns:
                 try:
-                    # 'ascending_flag': Determina la dirección (ASC o DESC)
-                    ascending_flag = (new_sort_val == 'ASC')
-                    
-                    # '_sort_key': Crea una columna temporal usando el mapa
+                    ascending_flag_priority = (new_sort_val == 'ASC')
                     resultado_df['_sort_key'] = resultado_df['Priority'].map(priority_map).fillna(0)
                     
-                    # 'sort_values': Ordena el DataFrame por la clave numérica
+                    sort_by_cols = ['_sort_key']
+                    sort_ascending_flags = [ascending_flag_priority]
+                    
+                    if age_col_exists:
+                        sort_by_cols.append('Invoice Date Age')
+                        sort_ascending_flags.append(False) # (Siempre Mayor antigüedad primero)
+                    
                     resultado_df = resultado_df.sort_values(
-                        by='_sort_key', 
-                        ascending=ascending_flag, 
-                        kind='stable' # 'kind='stable'': Mantiene el orden relativo de filas con la misma prioridad
+                        by=sort_by_cols,
+                        ascending=sort_ascending_flags,
+                        kind='stable'
                     )
                     
-                    # 'drop': Elimina la columna temporal
                     resultado_df = resultado_df.drop(columns=['_sort_key'])
 
                 except Exception as e:
-                    st.warning(f"No se pudo aplicar el ordenamiento por prioridad: {e}")
+                    st.warning(f"No se pudo aplicar el ordenamiento por prioridad y antigüedad: {e}")
 
-            # --- [FIN] NUEVA LÓGICA DE ORDENAMIENTO (CON RADIO) ---
+            # --- [INICIO] CAMBIO: Se elimina el bloque 'elif' ---
+            # [Caso 3] El usuario seleccionó "Default" (new_sort_val es None)
+            # Ya no se ejecuta ningún 'elif'. Si 'new_sort_val' es None,
+            # el 'if' anterior se salta, y 'resultado_df' mantiene
+            # su orden original (tal como lo pide el usuario).
+            # --- [FIN] CAMBIO ---
+            
+            # --- [FIN] LÓGICA DE ORDENAMIENTO (MULTI-NIVEL CORREGIDA) ---
 
             # 8. Renderizar la vista
-            # (El 'resultado_df' que se pasa aquí ahora está ordenado
-            #  según la selección del radio button)
             render_detailed_view(
                 lang=lang, 
-                resultado_df_filtrado=resultado_df, # <--- Este DF ahora está ordenado
+                resultado_df_filtrado=resultado_df, # <--- DF ordenado (o no)
                 df_master_copy=df_staging_copy, 
                 col_map_ui_to_en=col_map_ui_to_en,
                 todas_las_columnas_en=todas_las_columnas_en
