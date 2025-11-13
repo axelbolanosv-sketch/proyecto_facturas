@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN CON TEXTOS DE GUARDAR/CARGAR VISTA)
+# modules/translator.py (VERSIÓN CON TEXTOS PARA GESTIÓN DE AUTOCOMPLETADO)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -133,10 +133,25 @@ LANGUAGES = {
         
         "editor_manual_save_warning": "⚠️ **Importante:** Sus cambios **no se guardan automáticamente** (ni con 'Enter'). Puede editar múltiples celdas. Haga clic en **'Guardar Borrador' (o Ctrl+S)** para guardar. Si cambia de idioma, filtros, o vista *antes* de guardar, sus ediciones se perderán.",
         
-        # --- [NUEVO] Cargar/Guardar Vista ---
-        "config_header": "Guardar / Cargar Vista",
-        "save_config_button": "Guardar Vista Actual (.json)",
-        "load_config_label": "Cargar Vista (.json)",
+        "config_header": "Gestión de Configuración",
+        "config_help_text": "Guarde su vista actual (filtros, columnas, orden) para usarla después, o cargue una guardada previamente.",
+        "save_config_button": "💾 Guardar Configuración",
+        "load_config_label": "📂 Cargar Configuración",
+        "reset_config_button": "🔄 Restablecer Todo (Limpiar)",
+        "reset_config_success": "¡Configuración restablecida a valores por defecto!",
+        
+        # --- [NUEVO] GESTIÓN DE AUTOCOMPLETADO ---
+        "manage_autocomplete_header": "📋 Gestión de Listas (Autocompletado)",
+        "manage_autocomplete_info": "Añada o elimine opciones en los desplegables de la tabla (ej. nuevos proveedores).",
+        "select_column_to_edit": "Seleccione la columna a editar:",
+        "current_options": "Opciones Actuales ({n}):",
+        "add_option_label": "Nuevo Elemento",
+        "add_option_placeholder": "Escriba nueva opción...",
+        "add_option_btn": "➕ Añadir",
+        "remove_options_label": "Seleccionar para Eliminar:",
+        "remove_option_btn": "🗑️ Eliminar Seleccionados",
+        "option_added_success": "✅ ¡Opción '{val}' añadida a '{col}'!",
+        "options_removed_success": "✅ ¡{n} opciones eliminadas de '{col}'!",
         # --- [FIN] ---
         
         "date_format_help": "Formato de guardado: DD-MM-AAAA. Se intentará analizar otros formatos (ej. 20220309).",
@@ -230,10 +245,25 @@ LANGUAGES = {
         
         "editor_manual_save_warning": "⚠️ **Importante:** Your changes are **not saved automatically** (ni con 'Enter'). You can edit multiple cells. Click **'Guardar Borrador' (o Ctrl+S)** to save. If you change the language, filters, or view *before* saving, your edits will be lost.",
         
-        # --- [NUEVO] Cargar/Guardar Vista ---
-        "config_header": "Save / Load View",
-        "save_config_button": "Save Current View (.json)",
-        "load_config_label": "Load View (.json)",
+        "config_header": "Configuration Management",
+        "config_help_text": "Save your current view (filters, columns, sort) for later use, or load a previously saved one.",
+        "save_config_button": "💾 Save Configuration",
+        "load_config_label": "📂 Load Configuration",
+        "reset_config_button": "🔄 Reset All (Clear)",
+        "reset_config_success": "Configuration reset to defaults!",
+
+        # --- [NUEVO] GESTIÓN DE AUTOCOMPLETADO ---
+        "manage_autocomplete_header": "📋 List Management (Autocomplete)",
+        "manage_autocomplete_info": "Add or remove options in the table dropdowns (e.g. new vendors).",
+        "select_column_to_edit": "Select column to edit:",
+        "current_options": "Current Options ({n}):",
+        "add_option_label": "New Item",
+        "add_option_placeholder": "Type new option...",
+        "add_option_btn": "➕ Add",
+        "remove_options_label": "Select to Remove:",
+        "remove_option_btn": "🗑️ Remove Selected",
+        "option_added_success": "✅ Option '{val}' added to '{col}'!",
+        "options_removed_success": "✅ {n} options removed from '{col}'!",
         # --- [FIN] ---
         
         "date_format_help": "Save format: MM-DD-AAAA. Other formats (e.g., 20220309) will be auto-parsed.",
@@ -247,8 +277,6 @@ def get_text(language, key):
     Obtiene el texto traducido de la UI.
     Si no se encuentra la clave, devuelve la clave misma.
     """
-    # 'LANGUAGES.get(language, {})': Obtiene el diccionario del idioma, o uno vacío si no existe.
-    # '.get(key, key)': Obtiene el texto de la clave, o devuelve la clave misma si no se encuentra.
     return LANGUAGES.get(language, {}).get(key, key)
 
 def translate_column(language, column_name):
@@ -256,9 +284,6 @@ def translate_column(language, column_name):
     Traduce un nombre de columna de inglés a español.
     Si el idioma es 'en' o no se encuentra traducción, devuelve el original.
     """
-    # 'if language == 'es'': Solo traduce si el idioma es español.
     if language == 'es':
-        # 'COLUMN_TRANSLATIONS.get(...)': Busca en el mapa; si no encuentra, devuelve el nombre original.
         return COLUMN_TRANSLATIONS.get(column_name, column_name)
-    # 'return column_name': Devuelve el nombre original (inglés) si el idioma es 'en'.
     return column_name

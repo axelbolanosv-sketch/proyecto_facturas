@@ -1,4 +1,4 @@
-# modules/gui_sidebar.py (VERSIÓN CON GUARDADO/CARGA DE ORDENAMIENTO)
+# modules/gui_sidebar.py (VERSIÓN CON GESTIÓN DE LISTAS Y CONFIGURACIÓN AMIGABLE)
 # Contiene toda la lógica para renderizar la barra lateral.
 
 import streamlit as st
@@ -9,12 +9,19 @@ from modules.gui_utils import clear_state_and_prepare_reload
 def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en=None, todas_las_columnas_en=None):
     """
     Renderiza todo el contenido de la barra lateral.
-    Retorna:
-    - uploaded_files (list): Lista de archivos Excel cargados.
+    
+    Args:
+        lang (str): Código de idioma actual ('es' o 'en').
+        df_loaded (bool): True si hay datos cargados en st.session_state.
+        todas_las_columnas_ui (list): Lista de nombres de columnas para la UI.
+        col_map_es_to_en (dict): Mapa de traducción inversa (UI -> Inglés).
+        todas_las_columnas_en (list): Lista de nombres de columnas originales (Inglés).
+
+    Returns:
+        list: Lista de archivos Excel cargados (uploaded_files).
     """
     
     # --- 1. Selector de Idioma ---
-    # (Esta sección no tiene cambios)
     lang_options = {"Español": "es", "English": "en"}
 
     def callback_update_language():
@@ -37,7 +44,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     st.sidebar.markdown(f"## {get_text(lang, 'control_area')}")
 
     # --- 2. Cargador de Archivos (Excel) ---
-    # (Esta sección no tiene cambios)
     uploader_label_es = get_text('es', 'uploader_label')
     uploader_label_en = get_text('en', 'uploader_label')
     static_uploader_label = f"{uploader_label_es} / {uploader_label_en}"
@@ -54,7 +60,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     if df_loaded:
         
         # --- 3a. Creación de Filtros ---
-        # (Esta sección no tiene cambios)
         st.sidebar.markdown(f"### {get_text(lang, 'add_filter_header')}")
         lista_columnas_ui = [""] + todas_las_columnas_ui
 
@@ -103,7 +108,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                     st.sidebar.warning(get_text(lang, 'warning_no_filter'))
         
         # --- 3b. Selector de Columnas Visibles ---
-        # (Esta sección no tiene cambios)
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### {get_text(lang, 'visible_cols_header')}")
         
@@ -146,137 +150,137 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
             on_change=callback_update_cols_from_multiselect 
         )
         
-        # --- [INICIO] SECCIÓN GUARDAR/CARGAR VISTA (MODIFICADA) ---
+        # --- SECCIÓN GESTIÓN DE CONFIGURACIÓN (VISUAL) ---
         
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### {get_text(lang, 'config_header')}")
+        st.sidebar.caption(get_text(lang, 'config_help_text'))
         
-        # 1. Widget de Descarga (Guardar Vista)
-        #    (Se añade 'priority_sort_order' al diccionario)
+        # Recolectar datos actuales de la configuración
         config_data = {
             "filtros_activos": st.session_state.get('filtros_activos', []),
             "columnas_visibles": st.session_state.get('columnas_visibles', todas_las_columnas_en),
             "language": st.session_state.get('language', 'es'),
             "view_type": st.session_state.get('view_type_radio', get_text(lang, 'view_type_detailed')),
             "group_by_column": st.session_state.get('group_by_col_select', None),
-            
-            # --- [INICIO] CAMBIO: Añadir el estado de ordenamiento al JSON ---
-            # 'st.session_state.get(...)': Obtiene el estado del ordenamiento (None, 'ASC', o 'DESC')
-            # y lo guarda en el archivo JSON.
-            "priority_sort_order": st.session_state.get('priority_sort_order', None)
-            # --- [FIN] CAMBIO ---
+            "priority_sort_order": st.session_state.get('priority_sort_order', None),
+            # Opcional: Guardar también las listas personalizadas
+            "autocomplete_options": st.session_state.get('autocomplete_options', {})
         }
         json_string = json.dumps(config_data, indent=2)
 
+        # 1. Botón de Guardar (Descarga)
         st.sidebar.download_button(
             label=get_text(lang, 'save_config_button'),
             data=json_string,
-            file_name="mi_vista_facturas.json",
+            file_name="configuracion_facturas.json",
             mime="application/json",
             key="save_config_btn",
             use_container_width=True
         )
 
-        # 2. Lógica de Carga (Callback)
+        # 2. Lógica de Carga (Upload)
         def callback_process_config():
-            """
-            Se llama cuando el st.file_uploader 'config_uploader' detecta
-            un CAMBIO (archivo cargado O archivo eliminado).
-            """
-            # 'file': Obtiene el archivo (si existe) desde el estado.
             file = st.session_state.config_uploader
-            
-            # --- [INICIO] LÓGICA DE REVERSIÓN ESTABLE ---
-            if file is None:
-                # 'file is None' significa que el usuario hizo clic en la 'X'
-                # para eliminar el archivo JSON.
-                # Se activa la lógica de "Revertir a Estable" (como Ctrl+Z).
-                
-                # 1. Revertir datos a 'df_original' (Estable)
-                if st.session_state.df_original is not None:
-                    st.session_state.df_staging = st.session_state.df_original.copy()
-                
-                # 2. Revertir columnas visibles a 'columnas_visibles_estable'
-                if st.session_state.columnas_visibles_estable is not None:
-                    st.session_state.columnas_visibles = st.session_state.columnas_visibles_estable.copy()
-                elif todas_las_columnas_en is not None:
-                    # Fallback si 'estable' no existe, usar todas.
-                    st.session_state.columnas_visibles = todas_las_columnas_en.copy()
-                
-                # 3. Limpiar filtros activos
-                st.session_state.filtros_activos = []
-                
-                # 4. Resetear el editor (para forzar recarga)
-                # Esta lógica es la misma que en _callback_revertir_estable
-                st.session_state.editor_state = None
-                st.session_state.current_data_hash = None
-                st.session_state.current_lang_hash = None
-                
-                # --- [INICIO] CAMBIO: Resetear el ordenamiento ---
-                # 'st.session_state.priority_sort_order = None':
-                # Al quitar el JSON, también se resetea el orden a 'Default'.
-                st.session_state.priority_sort_order = None
-                # --- [FIN] CAMBIO ---
-                
-                # 'return': Termina la función. Streamlit hará un rerun.
-                return
-            # --- [FIN] LÓGICA DE REVERSIÓN ESTABLE ---
+            if file is None: return
 
-            # Si 'file' NO es None, significa que se cargó un nuevo JSON.
-            # Se procede a cargar la configuración del archivo.
             try:
-                # 'config_data': Carga el contenido del archivo JSON.
-                config_data = json.load(file)
+                config_loaded = json.load(file)
                 
-                # 'st.session_state.filtros_activos': Restaura los filtros.
-                st.session_state.filtros_activos = config_data.get("filtros_activos", [])
+                st.session_state.filtros_activos = config_loaded.get("filtros_activos", [])
+                st.session_state.columnas_visibles = config_loaded.get("columnas_visibles", todas_las_columnas_en)
+                st.session_state.language = config_loaded.get("language", st.session_state.language)
+                st.session_state.view_type_radio = config_loaded.get("view_type", get_text(lang, 'view_type_detailed'))
+                st.session_state.group_by_col_select = config_loaded.get("group_by_column", None)
+                st.session_state.priority_sort_order = config_loaded.get("priority_sort_order", None)
                 
-                # 'st.session_state.columnas_visibles': Restaura las columnas.
-                st.session_state.columnas_visibles = config_data.get(
-                    "columnas_visibles", todas_las_columnas_en
-                )
-                
-                # 'st.session_state.language': Restaura el idioma.
-                st.session_state.language = config_data.get(
-                    "language", st.session_state.language
-                )
-                
-                # 'st.session_state.view_type_radio': Restaura la vista.
-                st.session_state.view_type_radio = config_data.get(
-                    "view_type", get_text(lang, 'view_type_detailed')
-                )
-                
-                # 'st.session_state.group_by_col_select': Restaura la agrupación.
-                st.session_state.group_by_col_select = config_data.get(
-                    "group_by_column", None
-                )
-                
-                # --- [INICIO] CAMBIO: Cargar el estado de ordenamiento ---
-                # 'st.session_state.priority_sort_order': Lee el valor de ordenamiento
-                # del JSON ('ASC', 'DESC', o None) y lo restaura en la sesión.
-                st.session_state.priority_sort_order = config_data.get(
-                    "priority_sort_order", None
-                )
-                # --- [FIN] CAMBIO ---
+                # Cargar también las listas personalizadas si existen
+                if "autocomplete_options" in config_loaded:
+                    st.session_state.autocomplete_options = config_loaded["autocomplete_options"]
 
-                # 'st.rerun()': Se fuerza un rerun para aplicar todo.
                 st.rerun()
-
             except Exception as e:
-                # 'st.error': Muestra un error si el JSON es inválido.
-                st.error(f"Error al cargar el archivo de configuración: {e}")
-                # (No es necesario limpiar el uploader,
-                #  el callback lo hará si el usuario carga otro archivo)
+                st.error(f"Error al cargar configuración: {e}")
 
-        # 3. Widget de Carga (Cargar Vista)
+        # Widget de Carga
         st.sidebar.file_uploader(
             label=get_text(lang, 'load_config_label'),
             type=["json"],
             key="config_uploader",
             accept_multiple_files=False,
-            on_change=callback_process_config # Asigna el callback
+            on_change=callback_process_config 
         )
-        # --- [FIN] SECCIÓN MODIFICADA ---
+        
+        # 3. Botón de Restablecer
+        if st.sidebar.button(get_text(lang, 'reset_config_button'), use_container_width=True):
+            st.session_state.filtros_activos = []
+            st.session_state.columnas_visibles = todas_las_columnas_en
+            st.session_state.priority_sort_order = None
+            st.session_state.group_by_col_select = None
+            st.success(get_text(lang, 'reset_config_success'))
+            st.rerun()
 
-    # 'return uploaded_files': Solo retorna los archivos Excel.
+        # --- [NUEVO] SECCIÓN GESTIÓN DE LISTAS (AUTOCOMPLETADO) ---
+        # Permite al usuario modificar las opciones de los selectbox en la tabla.
+        
+        if st.session_state.get('autocomplete_options'):
+            st.sidebar.markdown("---")
+            # Usamos un expander para mantener la interfaz limpia
+            with st.sidebar.expander(get_text(lang, 'manage_autocomplete_header'), expanded=False):
+                st.info(get_text(lang, 'manage_autocomplete_info'))
+                
+                # 1. Selector de Columna
+                # Mapeamos nombres UI (Español/Inglés) -> Claves internas (Inglés)
+                col_options_map = {
+                    translate_column(lang, k): k 
+                    for k in st.session_state.autocomplete_options.keys()
+                }
+                
+                col_ui_selected = st.selectbox(
+                    get_text(lang, 'select_column_to_edit'),
+                    options=sorted(list(col_options_map.keys())),
+                    key="autocomplete_col_select"
+                )
+                
+                if col_ui_selected:
+                    # Recuperamos la clave interna y la lista actual
+                    col_en_selected = col_options_map[col_ui_selected]
+                    current_opts = st.session_state.autocomplete_options.get(col_en_selected, [])
+                    
+                    # Mostramos un resumen visual
+                    st.markdown(f"**{get_text(lang, 'current_options').format(n=len(current_opts))}**")
+                    st.caption(", ".join(map(str, current_opts[:8])) + ("..." if len(current_opts) > 8 else ""))
+                    
+                    # 2. Añadir Opción
+                    col_add1, col_add2 = st.columns([0.7, 0.3])
+                    with col_add1:
+                        new_option_val = st.text_input(
+                            get_text(lang, 'add_option_label'), 
+                            label_visibility="collapsed",
+                            placeholder=get_text(lang, 'add_option_placeholder'),
+                            key=f"add_opt_input_{col_en_selected}" 
+                        )
+                    with col_add2:
+                        if st.button(get_text(lang, 'add_option_btn'), key=f"btn_add_{col_en_selected}"):
+                            if new_option_val and new_option_val not in current_opts:
+                                current_opts.append(str(new_option_val))
+                                current_opts.sort()
+                                st.session_state.autocomplete_options[col_en_selected] = current_opts
+                                st.success(get_text(lang, 'option_added_success').format(val=new_option_val, col=col_ui_selected))
+                                st.rerun()
+                    
+                    # 3. Eliminar Opciones
+                    opts_to_remove = st.multiselect(
+                        get_text(lang, 'remove_options_label'),
+                        options=current_opts,
+                        key=f"remove_opt_multi_{col_en_selected}"
+                    )
+                    
+                    if st.button(get_text(lang, 'remove_option_btn'), key=f"btn_rem_{col_en_selected}"):
+                        if opts_to_remove:
+                            new_list = [x for x in current_opts if x not in opts_to_remove]
+                            st.session_state.autocomplete_options[col_en_selected] = new_list
+                            st.success(get_text(lang, 'options_removed_success').format(n=len(opts_to_remove), col=col_ui_selected))
+                            st.rerun()
+
     return uploaded_files
