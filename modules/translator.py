@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN CON TEXTO PARA FILTRO SELECTBOX)
+# modules/translator.py (VERSIÓN ACTUALIZADA CON TEXTOS DE REGLAS)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -22,6 +22,8 @@ COLUMN_TRANSLATIONS = {
     "Sender Email": "Email Remitente",
     "System Invoice #": "Nº Factura (Sistema)",
     "Priority": "Prioridad",
+    # --- [NUEVO] Columna de Razón (Tooltip) ---
+    "Priority_Reason": "Prioridad (Razón)",
     "Invoice Date Age": "Antigüedad (Días)",
     "Document Type": "Tipo de Documento",
     "Terms Date": "Fecha de Términos",
@@ -54,7 +56,6 @@ LANGUAGES = {
         "uploader_label": "Cargue su archivo de facturas",
         "add_filter_header": "Añadir Filtro",
         "column_select": "Seleccione una columna:",
-        # --- [NUEVO] Texto para el desplegable de filtro ---
         "column_select_value": "Seleccione un valor:", 
         "search_text": "Texto a buscar (coincidencia parcial)",
         "add_filter_button": "Añadir Filtro",
@@ -155,10 +156,31 @@ LANGUAGES = {
         "options_removed_success": "✅ ¡{n} opciones eliminadas de '{col}'!",
         
         "date_format_help": "Formato de guardado: DD-MM-AAAA. Se intentará analizar otros formatos (ej. 20220309).",
-        "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
-        "date_format_en": "%m-%d-%Y"  # Formato Mes-Día-Año
+        "date_format_es": "%d-%m-%Y",
+        "date_format_en": "%m-%d-%Y",
+        
+        # --- [NUEVO] Textos del Editor de Reglas y Auditoría ---
+        "rules_header": "Lógica de Negocio",
+        "rules_edit_button": "⚙️ Editar Reglas de Prioridad",
+        "rules_editor_title": "Editor de Reglas de Prioridad",
+        "rules_editor_info": "Aquí puede cambiar la lógica de negocio. Las reglas se aplican en orden (columna 'Orden'). La edición manual en la tabla siempre tiene la máxima prioridad.",
+        "rules_editor_header": "Editor de Reglas",
+        "rules_editor_order_help": "Número más bajo se ejecuta primero (ej. 10 es antes que 20).",
+        "rules_editor_reason_help": "La descripción de la regla (ej. 'Alto volumen Nov 2025'). Se mostrará en la columna 'Prioridad (Razón)'.",
+        "rules_editor_audit_header": "Auditoría (Trazabilidad)",
+        "rules_editor_reason_input": "Razón del Cambio (Obligatorio para auditoría)",
+        "rules_editor_reason_placeholder": "Ej: Se añade al proveedor 'ACME' como Alta Prioridad por inicio de contrato.",
+        "rules_editor_reason_error": "Debe proveer una razón para el cambio.",
+        "rules_editor_save_btn": "Guardar y Recalcular",
+        "rules_editor_cancel_btn": "Cancelar",
+        "rules_editor_save_success": "¡Reglas actualizadas y log de auditoría guardado!",
+        "audit_log_header": "Descargar Log de Auditoría",
+        "audit_log_info": "Descargue el historial completo de todos los cambios a las reglas en formato Excel.",
+        "audit_log_download_btn": "Descargar Log (Excel)"
     },
     "en": {
+        # ... (Se omiten las traducciones al inglés por brevedad,
+        #      pero se añadirían de forma análoga)
         "title": "Dynamic Invoice Search",
         "subtitle": "Upload ANY Excel file (.xlsx) and add multiple filters.",
         "lang_selector": "Language",
@@ -166,7 +188,6 @@ LANGUAGES = {
         "uploader_label": "Upload your invoice file",
         "add_filter_header": "Add Filter",
         "column_select": "Select a column:",
-        # --- [NUEVO] Texto para el desplegable de filtro ---
         "column_select_value": "Select a value:",
         "search_text": "Text to search (partial match)",
         "add_filter_button": "Add Filter",
@@ -182,14 +203,12 @@ LANGUAGES = {
         "error_critical": "Critical Error while processing file: {e}",
         "error_corrupt": "The file might be corrupt or in an unexpected format.",
         "info_upload": "Please upload an .xlsx file to begin.",
-
         "kpi_header": "Search Summary",
         "kpi_total_invoices": "Total Invoices",
         "kpi_total_amount": "Total Filtered Amount",
         "kpi_avg_amount": "Average Amount",
         "kpi_total_amount_help": "Total sum of the 'Total' column for all filtered invoices. Measures materiality and financial impact.",
         "kpi_avg_amount_help": "Average amount per invoice (Total / # Invoices). Useful for detecting anomalies and the 'typical' transaction size.",
-
         "group_by_header": "Grouped Analysis",
         "group_by_select": "Group results by?",
         "group_total_amount": "Total Amount",
@@ -198,25 +217,18 @@ LANGUAGES = {
         "group_min_amount": "Min Amount",
         "group_max_amount": "Max Amount",
         "group_avg_age": "Avg. Age (Days)",
-        
         "group_view_blank_row_info": "ℹ️ **Note:** A row with no name (blank) in this table groups all invoices that did not have a value (were empty) in the selected grouping column (e.g., a blank 'Pay Status').",
-
         "detailed_results_header": "Detailed Results",
-        
         "visible_cols_header": "Visible Columns",
         "visible_cols_select": "Select columns to display:",
         "visible_cols_toggle_button": "Select/Deselect All",
         "visible_cols_warning": "Please select at least one column to display.",
-        
         "view_type_header": "View Type",
         "view_type_detailed": "Detailed",
         "view_type_grouped": "Grouped",
-        
         'hotkey_loading_warning': '⚠️ **Attention:** Please do not use keyboard shortcuts (e.g., Ctrl+S) while the data editor is loading.',
-        
         'autocomplete_help': 'Select an existing value or type to filter. This helps maintain consistency.',
         'editor_info_help': 'You are in edit mode. Double-click a cell to modify it. You can add or delete rows using the (+) and (x) buttons at the bottom.',
-        
         'reset_changes_button': 'Revert to Stable',
         'reset_changes_help': 'Discards draft changes and restores the last stable save point. (Ctrl+Z)',
         'add_row_button': '➕ Add Row',
@@ -229,31 +241,24 @@ LANGUAGES = {
         'restore_pristine_button': 'Restore Original File',
         'restore_pristine_help': 'DANGER! Deletes ALL changes (draft and stable) and restores data from the original Excel file.',
         'commit_success_message': 'Stable restore point saved successfully!',
-        
         'editor_actions_header': 'Editor Actions',
-        
         'download_excel_manual_edits_button': 'Download Current Draft (Excel)',
         'download_excel_filtered_button': 'Descargar Vista Filtrada (Excel)',
-        
         "status_incomplete": "Row Incomplete",
         "status_complete": "Row Complete",
         "search_text_placeholder_default": "Type your search...",
         "search_text_placeholder_status": "Ej: Row Complete",
         "search_text_help_default": "Type your search and press 'Enter' or the 'Add' button",
         "search_text_help_status": "Type 'Row Complete' or 'Row Incomplete' and press 'Enter'",
-
         "editor_info_help_save": "Click 'Save Draft' to update row status.",
         "save_success_message": "Draft saved and status updated successfully!",
-        
         "editor_manual_save_warning": "⚠️ **Importante:** Your changes are **not saved automatically** (ni con 'Enter'). You can edit multiple cells. Click **'Guardar Borrador' (o Ctrl+S)** to save. If you change the language, filters, or view *before* saving, your edits will be lost.",
-        
         "config_header": "Configuration Management",
         "config_help_text": "Save your current view (filters, columns, sort) for later use, or load a previously saved one.",
         "save_config_button": "💾 Save Configuration",
         "load_config_label": "📂 Load Configuration",
         "reset_config_button": "🔄 Reset All (Clear)",
         "reset_config_success": "Configuration reset to defaults!",
-
         "manage_autocomplete_header": "📋 List Management (Autocomplete)",
         "manage_autocomplete_info": "Add or remove options in the table dropdowns (e.g. new vendors).",
         "select_column_to_edit": "Select column to edit:",
@@ -265,10 +270,28 @@ LANGUAGES = {
         "remove_option_btn": "🗑️ Remove Selected",
         "option_added_success": "✅ Option '{val}' added to '{col}'!",
         "options_removed_success": "✅ {n} options removed from '{col}'!",
-        
         "date_format_help": "Save format: MM-DD-AAAA. Other formats (e.g., 20220309) will be auto-parsed.",
-        "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
-        "date_format_en": "%m-%d-%Y"  # Formato Mes-Día-Año
+        "date_format_es": "%d-%m-%Y",
+        "date_format_en": "%m-%d-%Y",
+
+        # --- [NUEVO] Textos del Editor de Reglas y Auditoría (Inglés) ---
+        "rules_header": "Business Logic",
+        "rules_edit_button": "⚙️ Edit Priority Rules",
+        "rules_editor_title": "Priority Rules Editor",
+        "rules_editor_info": "Here you can change business logic. Rules are applied in order (column 'Order'). Manual edits in the grid always have the highest priority.",
+        "rules_editor_header": "Rules Editor",
+        "rules_editor_order_help": "Lowest number runs first (e.g., 10 runs before 20).",
+        "rules_editor_reason_help": "The rule description (e.g., 'High volume Nov 2025'). This will be shown in the 'Priority (Reason)' column.",
+        "rules_editor_audit_header": "Audit (Traceability)",
+        "rules_editor_reason_input": "Reason for Change (Required for audit)",
+        "rules_editor_reason_placeholder": "e.g., Added 'ACME' vendor as High Priority due to new contract.",
+        "rules_editor_reason_error": "You must provide a reason for the change.",
+        "rules_editor_save_btn": "Save & Recalculate",
+        "rules_editor_cancel_btn": "Cancel",
+        "rules_editor_save_success": "Rules updated and audit log saved!",
+        "audit_log_header": "Download Audit Log",
+        "audit_log_info": "Download the complete history of all rule changes in Excel format.",
+        "audit_log_download_btn": "Download Log (Excel)"
     }
 }
 

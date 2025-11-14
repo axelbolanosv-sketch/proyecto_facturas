@@ -1,10 +1,9 @@
-# app.py (VERSIÓN CON ORDENAMIENTO "DEFAULT" CORREGIDO)
+# app.py (VERSIÓN CON HOOK PARA EDITOR DE REGLAS)
 # Este archivo actúa como el "director de orquesta", coordinando
 # los módulos de UI y utilidades.
 
 import streamlit as st
 import pandas as pd
-# 'import json': Ya no es necesario aquí.
 from modules.filters import aplicar_filtros_dinamicos
 from modules.translator import get_text, translate_column
 
@@ -22,6 +21,9 @@ from modules.gui_views import (
     render_detailed_view,
     render_grouped_view
 )
+# --- [NUEVO] Importar el editor de reglas ---
+from modules.gui_rules_editor import render_rules_editor
+
 import streamlit_hotkeys as hotkeys 
 
 # --- 2. Configuración Inicial ---
@@ -43,6 +45,11 @@ hotkeys.activate([
 ],
     key='main_hotkeys' 
 )
+
+# --- [NUEVO] Renderizar el Editor de Reglas (si está activo) ---
+if st.session_state.get('show_rules_editor', False):
+    render_rules_editor()
+# --- [FIN] ---
 
 # --- 4. Títulos y Lógica de Columnas (Sin Cambios) ---
 st.markdown(f"<h1>🔎 {get_text(lang, 'title')}</h1>", unsafe_allow_html=True)
@@ -76,8 +83,8 @@ if uploaded_files and st.session_state.df_staging is None:
     st.rerun()
 
 # --- 7. Lógica Principal (Renderizado de Página) ---
+# (Casi sin cambios, solo un fallback)
 if df_staging_copy is None and st.session_state.df_staging is not None:
-    # (Lógica de 'fallback' sin cambios)
     df_staging_copy = st.session_state.df_staging.copy()
     if todas_las_columnas_en is None:
         todas_las_columnas_en = list(df_staging_copy.columns)
@@ -87,7 +94,6 @@ if df_staging_copy is None and st.session_state.df_staging is not None:
 
 if df_staging_copy is not None:
     try:
-        # (Renderizado de filtros activos y KPIs sin cambios)
         render_active_filters(lang)
 
         resultado_df = aplicar_filtros_dinamicos(
@@ -101,7 +107,6 @@ if df_staging_copy is not None:
 
         st.markdown(f"## {get_text(lang, 'results_header').format(num_filas=len(resultado_df))}")
         
-        # (Radio button de 'view_type' sin cambios)
         view_type = st.radio(
             label=get_text(lang, 'view_type_header'),
             options=[get_text(lang, 'view_type_detailed'), get_text(lang, 'view_type_grouped')],
@@ -112,9 +117,7 @@ if df_staging_copy is not None:
         
         if view_type == get_text(lang, 'view_type_detailed'):
             
-            # --- [INICIO] LÓGICA DE ORDENAMIENTO (MULTI-NIVEL CORREGIDA) ---
-            
-            # 1. Definir el mapa de ordenamiento lógico
+            # --- LÓGICA DE ORDENAMIENTO (Sin Cambios) ---
             priority_map = {
                 "🚩 Maxima Prioridad": 4, 
                 "Maxima Prioridad": 4, 
@@ -122,26 +125,20 @@ if df_staging_copy is not None:
                 "Media": 2,
                 "Minima": 1,
             }
-            
-            # 2. Definir las opciones del radio button
-            # --- [INICIO] CAMBIO: Se actualiza el texto de 'op_default' ---
             op_default = "Default (Sin Orden)" 
-            # --- [FIN] CAMBIO ---
             op_desc = "🔼 Maxima a Minima"
             op_asc = "🔽 Minima a Maxima"
             radio_options = [op_default, op_desc, op_asc]
             
-            # 3. Mapear el estado actual a la opción del radio
             current_sort_val = st.session_state.get('priority_sort_order', None)
             
             if current_sort_val == 'DESC':
-                current_index = 1 # 'op_desc'
+                current_index = 1
             elif current_sort_val == 'ASC':
-                current_index = 2 # 'op_asc'
+                current_index = 2
             else:
-                current_index = 0 # 'op_default'
+                current_index = 0
             
-            # 4. Renderizar el st.radio
             selected_option = st.radio(
                 "Ordenar por:", 
                 options=radio_options,
@@ -150,22 +147,18 @@ if df_staging_copy is not None:
                 key='priority_sort_radio'
             )
             
-            st.markdown("---") # Separador visual
+            st.markdown("---")
 
-            # 5. Convertir la opción seleccionada a un valor de estado
             new_sort_val = None
             if selected_option == op_desc:
                 new_sort_val = 'DESC'
             elif selected_option == op_asc:
                 new_sort_val = 'ASC'
             
-            # 6. Guardar el nuevo estado en la sesión
             st.session_state.priority_sort_order = new_sort_val
 
-            # 7. Aplicar el ordenamiento al DataFrame
             age_col_exists = 'Invoice Date Age' in resultado_df.columns
             
-            # [Caso 1 y 2] El usuario seleccionó un orden de Prioridad (ASC o DESC)
             if new_sort_val is not None and 'Priority' in resultado_df.columns:
                 try:
                     ascending_flag_priority = (new_sort_val == 'ASC')
@@ -176,7 +169,7 @@ if df_staging_copy is not None:
                     
                     if age_col_exists:
                         sort_by_cols.append('Invoice Date Age')
-                        sort_ascending_flags.append(False) # (Siempre Mayor antigüedad primero)
+                        sort_ascending_flags.append(False)
                     
                     resultado_df = resultado_df.sort_values(
                         by=sort_by_cols,
@@ -188,20 +181,11 @@ if df_staging_copy is not None:
 
                 except Exception as e:
                     st.warning(f"No se pudo aplicar el ordenamiento por prioridad y antigüedad: {e}")
-
-            # --- [INICIO] CAMBIO: Se elimina el bloque 'elif' ---
-            # [Caso 3] El usuario seleccionó "Default" (new_sort_val es None)
-            # Ya no se ejecuta ningún 'elif'. Si 'new_sort_val' es None,
-            # el 'if' anterior se salta, y 'resultado_df' mantiene
-            # su orden original (tal como lo pide el usuario).
-            # --- [FIN] CAMBIO ---
             
-            # --- [FIN] LÓGICA DE ORDENAMIENTO (MULTI-NIVEL CORREGIDA) ---
-
-            # 8. Renderizar la vista
+            # --- Renderizado de Vista (Sin Cambios) ---
             render_detailed_view(
                 lang=lang, 
-                resultado_df_filtrado=resultado_df, # <--- DF ordenado (o no)
+                resultado_df_filtrado=resultado_df,
                 df_master_copy=df_staging_copy, 
                 col_map_ui_to_en=col_map_ui_to_en,
                 todas_las_columnas_en=todas_las_columnas_en

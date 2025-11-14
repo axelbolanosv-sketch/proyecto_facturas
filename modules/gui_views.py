@@ -1,7 +1,5 @@
 # modules/gui_views.py
-# VERSIÓN CORREGIDA:
-# 1. Lógica de prioridad ajustada: "Grupo Bajo" ahora gana a "Bandera Antigua".
-# 2. Key dinámica en data_editor: Soluciona la desaparición de la tabla al cambiar idioma.
+# VERSIÓN CON CORRECCIÓN DE TYPO (estandaress -> estandares)
 
 import streamlit as st
 import pandas as pd
@@ -10,6 +8,9 @@ import numpy as np
 import warnings
 from modules.translator import get_text, translate_column
 from modules.gui_utils import to_excel
+# Importar el motor de reglas
+from modules.rules_service import apply_priority_rules
+
 import streamlit_hotkeys as hotkeys 
 
 # --- 0. COMPONENTE MODAL DE EDICIÓN MASIVA ---
@@ -46,46 +47,13 @@ def modal_bulk_edit(indices_seleccionados, col_map_ui_to_en, lang):
                     if idx in df_master.index:
                         df_master.at[idx, col_en_seleccionada] = nuevo_valor
                 
-                # --- LÓGICA DE PRIORIDADES (BULK) ---
-                if 'Pay Group' in df_master.columns and 'Priority' in df_master.columns:
-                    df_master['Priority'] = df_master['Priority'].fillna("").astype(str).str.strip()
-
-                    # 1. Manuales Protegidos (NO INCLUYE 'Maxima Prioridad' ni banderas)
-                    manual_priorities = ["Minima", "Media", "Alta", "Low", "Medium", "High", "Zero", "Baja Prioridad"]
-                    mask_manual_exact = df_master['Priority'].isin(manual_priorities)
-                    
-                    # 2. Pay Group
-                    pay_group_searchable = df_master['Pay Group'].fillna("").astype(str).str.upper().str.strip()
-                    high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"]
-                    low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"]
-                    
-                    mask_pg_high = pay_group_searchable.str.contains('|'.join(high_priority_terms), na=False)
-                    mask_pg_low = pay_group_searchable.str.contains('|'.join(low_priority_terms), na=False)
-
-                    # 3. Bandera Antigua (Sticky)
-                    mask_text_maxima = df_master['Priority'].str.contains("Maxima Prioridad", case=False, na=False)
-
-                    # 4. CASCADA DE REGLAS (ORDEN CORREGIDO)
-                    conditions = [
-                        mask_pg_high,       # 1. PayGroup Alto -> GANA SIEMPRE (Pone Bandera)
-                        mask_manual_exact,  # 2. Manual -> SE RESPETA (Si pusiste 'Media', se queda 'Media')
-                        mask_pg_low,        # 3. PayGroup Bajo -> MINIMA (Gana a la bandera antigua) [CORREGIDO]
-                        mask_text_maxima    # 4. Bandera Antigua -> SE MANTIENE (Solo si no es Bajo ni Manual)
-                    ]
-                    
-                    choices = [
-                        "🚩 Maxima Prioridad",
-                        df_master['Priority'],
-                        "Minima",
-                        "🚩 Maxima Prioridad"
-                    ]
-                    
-                    df_master['Priority'] = np.select(conditions, choices, default=df_master['Priority'])
-
+                # --- Lógica de Prioridad (Motor de Reglas) ---
+                df_master = apply_priority_rules(df_master)
+                
                 # --- Row Status ---
                 col_status_en = "Row Status"
                 if col_status_en in df_master.columns:
-                    cols_to_check = [col for col in df_master.columns if col != col_status_en]
+                    cols_to_check = [col for col in df_master.columns if col != col_status_en and col != 'Priority_Reason']
                     df_check = df_master[cols_to_check].fillna("").astype(str)
                     blank_mask = (df_check == "") | (df_check == "0")
                     incomplete_rows = blank_mask.any(axis=1)
@@ -147,6 +115,7 @@ def render_kpi_dashboard(lang, resultado_df):
 
 # --- 3. RENDER VISTA DETALLADA ---
 def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui_to_en, todas_las_columnas_en):
+    
     if not st.session_state.columnas_visibles:
             st.warning(get_text(lang, 'visible_cols_warning'))
             return
@@ -164,7 +133,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     df_display = df_vista_detallada.copy()
     df_display.columns = [translate_column(lang, col) if col != col_sel_name else col for col in df_display.columns]
     
-    # Indicador visual
     if 'Priority' in resultado_df_filtrado.columns:
         try:
             is_max_priority = (resultado_df_filtrado['Priority'] == "Maxima Prioridad") | (resultado_df_filtrado['Priority'] == "🚩 Maxima Prioridad")
@@ -173,27 +141,43 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
         except Exception as e:
             st.warning(f"No se pudo aplicar el indicador: {e}")
     
-    # Configuración de Columnas
+    # --- Configuración de Columnas ---
     configuracion_columnas = {}
     date_format_help_text = get_text(lang, 'date_format_help')
     cached_options = st.session_state.get('autocomplete_options', {})
 
     configuracion_columnas[col_sel_name] = st.column_config.CheckboxColumn("☑️", help="Seleccione para edición masiva", default=False, width="small")
 
+    # Configurar la columna Razón (Tooltip)
+    col_razon_ui = translate_column(lang, "Priority_Reason")
+    if col_razon_ui in df_display.columns:
+        configuracion_columnas[col_razon_ui] = st.column_config.TextColumn(
+            f"{col_razon_ui} 💡", 
+            help="Explica por qué una factura tiene su prioridad. (Solo lectura)",
+            disabled=True # La hace solo lectura
+        )
+
     for col_ui in df_display.columns:
         if col_ui == col_sel_name: continue
+        if col_ui == col_razon_ui: continue 
+        
         col_en = col_map_ui_to_en.get(col_ui, col_ui) 
         
+        # Lógica de Selectbox (autocompletado)
         if col_en in cached_options and cached_options[col_en]:
             opciones_actuales = list(cached_options[col_en])
             
             if col_en == "Priority":
+                # Definimos la lista de prioridades estándar
                 estandares = [
                     "🚩 Maxima Prioridad", "Maxima Prioridad", 
                     "Minima", "Media", "Alta", 
                     "Baja Prioridad", "Low", "Medium", "High", "Zero"
                 ]
-                for std in estandares:
+                # --- [INICIO] CORRECCIÓN DEL TYPO ---
+                # Cambiado 'estandaress' a 'estandares'
+                for std in estandares: 
+                # --- [FIN] CORRECCIÓN DEL TYPO ---
                     if std not in opciones_actuales:
                         opciones_actuales.append(std)
             
@@ -201,10 +185,11 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                 f"{col_ui} (Autocompletar)", help=get_text(lang, 'autocomplete_help'),
                 options=sorted(opciones_actuales), required=False 
             )
+        # Lógica de Fechas
         elif 'Date' in col_en and 'Age' not in col_en:
             configuracion_columnas[col_ui] = st.column_config.TextColumn(f"{col_ui}", help=date_format_help_text, required=False)
     
-    # Hashing y Estado
+    # (Hashing y Estado sin cambios)
     filtros_json_string = json.dumps(st.session_state.filtros_activos, sort_keys=True)
     columnas_tuple = tuple(st.session_state.columnas_visibles)
     priority_sort_state = st.session_state.get('priority_sort_order', None)
@@ -259,12 +244,19 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             df_master_staging = st.session_state.df_staging.copy()
             existing_rows_en = df_to_merge_en[df_to_merge_en.index.isin(df_master_staging.index)]
             new_rows_en = df_to_merge_en[~df_to_merge_en.index.isin(df_master_staging.index)]
-            df_master_staging.update(existing_rows_en)
+            
+            cols_to_update = [c for c in existing_rows_en.columns if c != 'Priority_Reason']
+            df_master_staging.update(existing_rows_en[cols_to_update])
+            
             df_master_staging = pd.concat([new_rows_en, df_master_staging])
             
+            # --- Lógica de Prioridad (Motor de Reglas) ---
+            df_master_staging = apply_priority_rules(df_master_staging)
+            
+            # --- Lógica de Estado de Fila ---
             col_status_en = "Row Status"
             if col_status_en in df_master_staging.columns:
-                cols_to_check_master = [col for col in df_master_staging.columns if col != col_status_en]
+                cols_to_check_master = [col for col in df_master_staging.columns if col != col_status_en and col != 'Priority_Reason']
                 df_check_master = df_master_staging[cols_to_check_master].fillna("").astype(str)
                 blank_mask_master = (df_check_master == "") | (df_check_master == "0")
                 incomplete_rows_master = blank_mask_master.any(axis=1)
@@ -272,37 +264,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
                     incomplete_rows_master, get_text(lang, 'status_incomplete'), get_text(lang, 'status_complete')
                 )
 
-            # --- LÓGICA DE PRIORIDAD (Manual Save) - CASCADA CORREGIDA ---
-            if 'Pay Group' in df_master_staging.columns and 'Priority' in df_master_staging.columns:
-                df_master_staging['Priority'] = df_master_staging['Priority'].fillna("").astype(str).str.strip()
-
-                manual_priorities = ["Minima", "Media", "Alta", "Low", "Medium", "High", "Zero", "Baja Prioridad"]
-                mask_manual_exact = df_master_staging['Priority'].isin(manual_priorities)
-                
-                pay_group_searchable = df_master_staging['Pay Group'].fillna("").astype(str).str.upper().str.strip()
-                high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"]
-                low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"]
-                
-                mask_pg_high = pay_group_searchable.str.contains('|'.join(high_priority_terms), na=False)
-                mask_pg_low = pay_group_searchable.str.contains('|'.join(low_priority_terms), na=False)
-                mask_text_maxima = df_master_staging['Priority'].str.contains("Maxima Prioridad", case=False, na=False)
-
-                conditions = [
-                    mask_pg_high,       # 1. Alto -> Bandera
-                    mask_manual_exact,  # 2. Manual -> Respetar
-                    mask_pg_low,        # 3. Bajo -> Minima (Degradación: AQUÍ EL FIX)
-                    mask_text_maxima    # 4. Sticky -> Mantener
-                ]
-                
-                choices = [
-                    "🚩 Maxima Prioridad",
-                    df_master_staging['Priority'],
-                    "Minima",
-                    "🚩 Maxima Prioridad"
-                ]
-                
-                df_master_staging['Priority'] = np.select(conditions, choices, default=df_master_staging['Priority'])
-            
             for col in df_master_staging.columns:
                 if 'Total' in col or 'Amount' in col or 'Age' in col or 'ID' in col or 'Number' in col:
                      df_master_staging[col] = pd.to_numeric(df_master_staging[col], errors='coerce').fillna(0)
@@ -332,9 +293,6 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
     st.warning(get_text(lang, 'editor_manual_save_warning'))
     spinner_text = f"Cargando editor... {get_text(lang, 'hotkey_loading_warning')}"
     
-    # --- KEY DINÁMICA PARA ARREGLAR CAMBIO DE IDIOMA ---
-    # Usamos el idioma en la 'key' para forzar que Streamlit recree la tabla desde cero
-    # cuando cambias de idioma, evitando el error de desaparición de la tabla.
     editor_key = f"main_data_editor_{lang}" 
 
     with st.spinner(spinner_text):
@@ -344,7 +302,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             num_rows="dynamic", 
             width='stretch', 
             height=600, 
-            key=editor_key,  # <--- FIX APLICADO AQUÍ
+            key=editor_key,
             hide_index=False
         )
     
@@ -354,7 +312,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
             indices_raw = filas_seleccionadas.index.astype(str).str.replace("🚩 ", "")
             indices_seleccionados = pd.to_numeric(indices_raw, errors='coerce').dropna().unique()
             if len(indices_seleccionados) > 0:
-                st.markdown("---"); st.info(f"✅ **{len(indices_seleccionados)} filas seleccionadas.**")
+                st.markdown("---"); st.info(f"✅ **{len(indices_seleccionadas)} filas seleccionadas.**")
                 if st.button(f"✏️ Editar {len(indices_seleccionados)} facturas (Masivo)"): modal_bulk_edit(indices_seleccionados, col_map_ui_to_en, lang)
                 st.markdown("---")
 
@@ -392,7 +350,7 @@ def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui
 
 # --- 4. RENDER VISTA AGRUPADA ---
 def render_grouped_view(lang, resultado_df, col_map_ui_to_en, todas_las_columnas_en):
-    columnas_agrupables_en = ["Vendor Name", "Status", "Assignee", "Operating Unit Name", "Pay Status", "Document Type", "Row Status", "Priority"]
+    columnas_agrupables_en = ["Vendor Name", "Status", "Assignee", "Operating Unit Name", "Pay Status", "Document Type", "Row Status", "Priority", "Priority_Reason"]
     opciones_agrupables_ui = [translate_column(lang, c) for c in columnas_agrupables_en if c in todas_las_columnas_en]
     
     if not opciones_agrupables_ui: st.warning("No hay columnas agrupables."); return

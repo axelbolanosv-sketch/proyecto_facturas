@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN CON LÓGICA DE 🚩 HOMOLOGADA y 4 NIVELES + ESTADO DE ORDEN)
+# modules/gui_utils.py (VERSIÓN CON MOTOR DE REGLAS DINÁMICO)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -6,52 +6,49 @@ import pandas as pd
 import io
 import numpy as np 
 from modules.translator import get_text
+# --- [NUEVO] Importar el motor de reglas ---
+from modules.rules_service import apply_priority_rules, get_default_rules
 
 # --- 1. Inicializar el 'Session State' ---
 def initialize_session_state():
-    """
-    Define el estado inicial de la sesión de Streamlit.
-    (Esta función es llamada al inicio de app.py)
-    """
-    # 'if 'filtros_activos' not in st.session_state:': Comprueba si la clave existe
+    """Define el estado inicial de la sesión de Streamlit."""
+    
     if 'filtros_activos' not in st.session_state:
-        # 'st.session_state.filtros_activos = []': Si no existe, la inicializa
         st.session_state.filtros_activos = []
     if 'language' not in st.session_state:
         st.session_state.language = 'es'
     if 'columnas_visibles' not in st.session_state:
         st.session_state.columnas_visibles = None 
-        
     if 'columnas_visibles_estable' not in st.session_state:
         st.session_state.columnas_visibles_estable = None
-        
     if 'editor_state' not in st.session_state:
         st.session_state.editor_state = None
-    
     if 'current_data_hash' not in st.session_state:
-        st.session_state.current_data_hash = None # Para filtros y columnas
+        st.session_state.current_data_hash = None
     if 'current_lang_hash' not in st.session_state:
-        st.session_state.current_lang_hash = None # Para el idioma
-    
+        st.session_state.current_lang_hash = None
     if 'df_pristine' not in st.session_state:
-        st.session_state.df_pristine = None # Archivo 0: Original
+        st.session_state.df_pristine = None
     if 'df_original' not in st.session_state:
-        st.session_state.df_original = None # Archivo 1: Estable
+        st.session_state.df_original = None
     if 'df_staging' not in st.session_state:
-        st.session_state.df_staging = None # Archivo 2: Borrador de trabajo
-        
+        st.session_state.df_staging = None
     if 'autocomplete_options' not in st.session_state:
         st.session_state.autocomplete_options = {}
-
-    # --- [INICIO] CAMBIO: Añadir estado de ordenamiento ---
-    # 'if 'priority_sort_order' not in st.session_state:':
-    # Esta es la línea que soluciona el 'AttributeError'.
-    # Inicializa el estado de ordenamiento personalizado.
     if 'priority_sort_order' not in st.session_state:
-        # 'st.session_state.priority_sort_order = None':
-        # Puede ser 'DESC' (Maxima a Minima), 'ASC' (Minima a Maxima), o None (default).
         st.session_state.priority_sort_order = None
-    # --- [FIN] CAMBIO ---
+        
+    # --- [NUEVO] Inicializar estado de reglas y auditoría ---
+    if 'priority_rules' not in st.session_state:
+        # Carga las reglas por defecto (ej. DIST, PAYROLL)
+        st.session_state.priority_rules = get_default_rules()
+        
+    if 'audit_log' not in st.session_state:
+        st.session_state.audit_log = []
+        
+    if 'show_rules_editor' not in st.session_state:
+        st.session_state.show_rules_editor = False
+    # --- [FIN] ---
 
 # --- 2. FUNCIÓN DE DISEÑO (CSS) ---
 def load_custom_css():
@@ -59,7 +56,7 @@ def load_custom_css():
     Carga CSS personalizado en la aplicación Streamlit.
     (Incluye el resaltado rojo para 'Maxima Prioridad')
     """
-    # (Esta función no tiene cambios respecto a la versión anterior)
+    # (El código CSS no cambia, se omite por brevedad)
     st.markdown(
         """
         <style>
@@ -166,8 +163,11 @@ def load_and_process_files(uploaded_files, lang):
     """
     Toma los archivos cargados, los combina, limpia (usando vectorización), 
     guarda las 3 copias y pre-calcula las opciones de autocompletar.
+    
+    --- MODIFICADO ---
+    Se elimina la lógica de prioridad estática y se reemplaza por
+    una llamada al motor de reglas dinámico.
     """
-    # (Esta función es idéntica a la versión anterior de 4 niveles)
     try:
         lista_de_dataframes = []
         files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
@@ -183,69 +183,48 @@ def load_and_process_files(uploaded_files, lang):
             df_processed.columns = [col.strip() for col in df_processed.columns]
             columnas_originales = list(df_processed.columns)
             
-            # --- [INICIO] OPTIMIZACIÓN: LIMPIEZA VECTORIZADA ---
-            
+            # --- Limpieza Vectorizada (Sin cambios) ---
             numeric_cols = [col for col in columnas_originales if 'Total' in col or 'Amount' in col or 'Age' in col or 'ID' in col or 'Number' in col]
             date_cols = [col for col in columnas_originales if 'Date' in col and col not in numeric_cols]
             string_cols = [col for col in columnas_originales if col not in numeric_cols and col not in date_cols]
 
             if string_cols:
                 df_processed[string_cols] = df_processed[string_cols].fillna("").astype(str)
-
             if numeric_cols:
                 df_processed[numeric_cols] = df_processed[numeric_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-
             if date_cols:
                 df_processed[date_cols] = df_processed[date_cols].apply(pd.to_datetime, errors='coerce')
-
             df_check = df_processed.astype(str).replace('NaT', '').replace('nan', '')
-
             if date_cols:
                 for col in date_cols:
                     df_processed[col] = df_check[col]
             
-            # --- [FIN] OPTIMIZACIÓN: LIMPIEZA VECTORIZADA ---
-
-            # --- [INICIO] LÓGICA DE PRIORIDAD (CORREGIDA Y HOMOLOGADA CON 4 NIVELES) ---
+            # --- [INICIO] LÓGICA DE PRIORIDAD (MODIFICADA) ---
             
-            if 'Pay Group' in df_processed.columns:
-                
-                if 'Priority' not in df_processed.columns:
-                    df_processed['Priority'] = "" 
-                    columnas_originales.append('Priority') 
-                df_processed['Priority'] = df_processed['Priority'].astype(str)
+            # 1. Asegurarse de que la columna 'Priority' exista
+            if 'Priority' not in df_processed.columns:
+                df_processed['Priority'] = "" 
+                columnas_originales.append('Priority')
+            df_processed['Priority'] = df_processed['Priority'].astype(str)
 
-                manual_priorities = ["Minima", "Media", "Alta"] 
-                mask_manual = df_processed['Priority'].isin(manual_priorities)
-                
-                pay_group_searchable = df_processed['Pay Group'].astype(str).str.upper()
-                high_priority_terms = ["DIST", "INTERCOMPANY", "PAYROLL", "RENTS", "SCF"] 
-                low_priority_terms = ["PAYGROUP", "PAY GROUP", "GNTD"] 
-                mask_high = pay_group_searchable.str.contains('|'.join(high_priority_terms), na=False)
-                mask_low = pay_group_searchable.str.contains('|'.join(low_priority_terms), na=False)
+            # 2. Asegurarse de que la columna 'Priority_Reason' exista
+            if 'Priority_Reason' not in df_processed.columns:
+                df_processed['Priority_Reason'] = "Sin Regla Asignada"
+                columnas_originales.append('Priority_Reason')
 
-                mask_excel_maxima = (df_processed['Priority'] == "Maxima Prioridad") | (df_processed['Priority'] == "🚩 Maxima Prioridad")
-
-                conditions = [
-                    mask_manual,                      
-                    mask_high,                        
-                    mask_excel_maxima,                
-                    mask_low                          
-                ]
-                
-                choices = [
-                    df_processed['Priority'],         
-                    "🚩 Maxima Prioridad",             
-                    "🚩 Maxima Prioridad",             
-                    "Minima"                          
-                ]
-                
-                df_processed['Priority'] = np.select(conditions, choices, default=df_processed['Priority'])
+            # 3. Llamar al motor de reglas dinámico
+            # Esta función lee las reglas de st.session_state y aplica
+            # la lógica, llenando 'Priority' y 'Priority_Reason'.
+            df_processed = apply_priority_rules(df_processed)
             
-            # --- [FIN] LÓGICA DE PRIORIDAD (CORREGIDA Y HOMOLOGADA) ---
+            # --- [FIN] LÓGICA DE PRIORIDAD (MODIFICADA) ---
             
             # --- Cálculo de 'Row Status' (basado en df_check) ---
-            blank_mask = (df_check == "") | (df_check == "0")
+            # (Se añade 'Priority_Reason' a la lista de columnas a ignorar)
+            cols_to_ignore = ['Row Status', 'Priority_Reason']
+            cols_to_check = [col for col in df_check.columns if col not in cols_to_ignore]
+            
+            blank_mask = (df_check[cols_to_check] == "") | (df_check[cols_to_check] == "0")
             incomplete_rows = blank_mask.any(axis=1)
             
             df_processed['Row Status'] = np.where(
@@ -316,9 +295,11 @@ def clear_state_and_prepare_reload():
     st.session_state.df_original = None
     st.session_state.df_staging = None
     st.session_state.autocomplete_options = {}
-    
-    # --- [INICIO] CAMBIO: Resetear el estado de ordenamiento ---
-    # 'st.session_state.priority_sort_order': Asegura que el orden se limpie
-    # al cargar un nuevo archivo.
     st.session_state.priority_sort_order = None
-    # --- [FIN] CAMBIO ---a
+    
+    # --- [NUEVO] Resetear estado de reglas y auditoría ---
+    # (No reseteamos las reglas, el usuario quiere que persistan)
+    # st.session_state.priority_rules = get_default_rules() 
+    # st.session_state.audit_log = [] 
+    st.session_state.show_rules_editor = False
+    # --- [FIN] ---

@@ -1,10 +1,12 @@
-# modules/gui_sidebar.py (VERSIÓN CORREGIDA - SIN FORMULARIO EN FILTROS)
+# modules/gui_sidebar.py (CORREGIDO)
 # Contiene toda la lógica para renderizar la barra lateral.
 
 import streamlit as st
 import json 
 from modules.translator import get_text, translate_column
 from modules.gui_utils import clear_state_and_prepare_reload
+# --- [NUEVO] Importar las reglas por defecto ---
+from modules.rules_service import get_default_rules
 
 def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en=None, todas_las_columnas_en=None):
     """
@@ -12,6 +14,7 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     """
     
     # --- 1. Selector de Idioma ---
+    # (Sin cambios)
     lang_options = {"Español": "es", "English": "en"}
 
     def callback_update_language():
@@ -34,6 +37,7 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     st.sidebar.markdown(f"## {get_text(lang, 'control_area')}")
 
     # --- 2. Cargador de Archivos (Excel) ---
+    # (Sin cambios)
     uploader_label_es = get_text('es', 'uploader_label')
     uploader_label_en = get_text('en', 'uploader_label')
     static_uploader_label = f"{uploader_label_es} / {uploader_label_en}"
@@ -49,38 +53,28 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     # --- 3. Controles Dinámicos (Solo si hay datos) ---
     if df_loaded:
         
-        # --- [INICIO] 3a. Creación de Filtros (CORREGIDO SIN FORM) ---
+        # --- 3a. Creación de Filtros (Sin formulario) ---
+        # (Sin cambios, esta lógica es correcta)
         st.sidebar.markdown(f"### {get_text(lang, 'add_filter_header')}")
         lista_columnas_ui = [""] + todas_las_columnas_ui
 
-        # NO USAMOS st.form aquí para permitir recargas dinámicas
-        
-        # 1. Selector de Columna
-        # Al cambiar esto, Streamlit RECARGARÁ la página.
         columna_seleccionada_ui = st.selectbox(
             get_text(lang, 'column_select'),
             options=lista_columnas_ui,
             key='filter_col_select' 
         )
         
-        # 2. Lógica de renderizado condicional
-        
-        # Esta lógica ahora se ejecuta DESPUÉS de la recarga,
-        # por lo que 'columna_seleccionada_ui' tiene el valor correcto.
         columna_en_filtro = col_map_es_to_en.get(columna_seleccionada_ui, columna_seleccionada_ui)
         autocomplete_cols = st.session_state.get('autocomplete_options', {})
 
         if columna_en_filtro in autocomplete_cols:
-            # --- RENDER SELECTBOX (DESPLEGABLE) ---
             opciones = [""] + sorted(autocomplete_cols[columna_en_filtro])
             st.selectbox(
                 get_text(lang, 'column_select_value'),
                 options=opciones,
-                key='filter_val_select' # Key única 1
+                key='filter_val_select'
             )
-            
         else:
-            # --- RENDER TEXT INPUT (CAJA DE TEXTO) ---
             col_estado_traducida = translate_column(lang, "Row Status")
             placeholder_default = get_text(lang, 'search_text_placeholder_default')
             help_default = get_text(lang, 'search_text_help_default')
@@ -94,22 +88,19 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
 
             st.text_input(
                 get_text(lang, 'search_text'),
-                key='filter_val_text', # Key única 2
+                key='filter_val_text',
                 placeholder=placeholder_text,
                 help=help_text
             )
         
-        # 3. Botón de Envío (Ahora es un st.button normal)
         submitted = st.button(
             get_text(lang, 'add_filter_button'), 
             key='add_filter_btn'
         )
 
-        # 4. Lógica de Envío (Sigue igual)
         if submitted:
             col_val_ui = st.session_state.filter_col_select
             val_val = None 
-            
             col_en_para_guardar = col_map_es_to_en.get(col_val_ui, col_val_ui)
             
             if col_en_para_guardar in autocomplete_cols:
@@ -125,10 +116,9 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                     st.rerun()
             else:
                 st.sidebar.warning(get_text(lang, 'warning_no_filter'))
-        # --- [FIN] 3a. Creación de Filtros (CORREGIDO) ---
-
         
         # --- 3b. Selector de Columnas Visibles ---
+        # (Sin cambios)
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### {get_text(lang, 'visible_cols_header')}")
         
@@ -140,29 +130,15 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 st.session_state.columnas_visibles = todas_las_columnas_en
             else:
                 st.session_state.columnas_visibles = []
-            
-            st.session_state.visible_cols_multiselect = [
-                translate_column(lang, col) for col in st.session_state.columnas_visibles
-            ]
+            st.session_state.visible_cols_multiselect = [translate_column(lang, col) for col in st.session_state.columnas_visibles]
 
         def callback_update_cols_from_multiselect():
             columnas_seleccionadas_ui = st.session_state.visible_cols_multiselect
-            
-            columnas_seleccionadas_en = [
-                col_en for col_en in todas_las_columnas_en
-                if translate_column(lang, col_en) in columnas_seleccionadas_ui
-            ]
-            
+            columnas_seleccionadas_en = [col_en for col_en in todas_las_columnas_en if translate_column(lang, col_en) in columnas_seleccionadas_ui]
             st.session_state.columnas_visibles = columnas_seleccionadas_en
 
-        st.sidebar.button(
-            get_text(lang, 'visible_cols_toggle_button'), 
-            key="toggle_cols_btn",
-            on_click=callback_toggle_cols
-        )
-        
+        st.sidebar.button(get_text(lang, 'visible_cols_toggle_button'), key="toggle_cols_btn", on_click=callback_toggle_cols)
         defaults_ui = [translate_column(lang, col) for col in st.session_state.columnas_visibles]
-        
         st.sidebar.multiselect(
             get_text(lang, 'visible_cols_select'),
             options=todas_las_columnas_ui,
@@ -184,7 +160,9 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
             "view_type": st.session_state.get('view_type_radio', get_text(lang, 'view_type_detailed')),
             "group_by_column": st.session_state.get('group_by_col_select', None),
             "priority_sort_order": st.session_state.get('priority_sort_order', None),
-            "autocomplete_options": st.session_state.get('autocomplete_options', {})
+            "autocomplete_options": st.session_state.get('autocomplete_options', {}),
+            "priority_rules": st.session_state.get('priority_rules', []),
+            "audit_log": st.session_state.get('audit_log', [])
         }
         json_string = json.dumps(config_data, indent=2)
 
@@ -200,7 +178,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
         def callback_process_config():
             file = st.session_state.config_uploader
             if file is None: return
-
             try:
                 config_loaded = json.load(file)
                 st.session_state.filtros_activos = config_loaded.get("filtros_activos", [])
@@ -211,6 +188,15 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 st.session_state.priority_sort_order = config_loaded.get("priority_sort_order", None)
                 if "autocomplete_options" in config_loaded:
                     st.session_state.autocomplete_options = config_loaded["autocomplete_options"]
+                
+                # --- [INICIO] CORRECCIÓN DE CARGA DE CONFIG ---
+                # Si la clave "priority_rules" NO está en el JSON, 
+                # usa las reglas por defecto. NO uses las reglas que
+                # ya estaban en el estado, porque podrían estar vacías.
+                st.session_state.priority_rules = config_loaded.get("priority_rules", get_default_rules())
+                st.session_state.audit_log = config_loaded.get("audit_log", [])
+                # --- [FIN] CORRECCIÓN DE CARGA DE CONFIG ---
+                
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al cargar configuración: {e}")
@@ -231,18 +217,21 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
             st.success(get_text(lang, 'reset_config_success'))
             st.rerun()
 
-        # --- SECCIÓN GESTIÓN DE LISTAS (AUTOCOMPLETADO) ---
+        # --- SECCIÓN LÓGICA DE NEGOCIO ---
+        st.sidebar.markdown("---")
+        st.sidebar.markdown(f"### {get_text(lang, 'rules_header')}")
         
+        if st.sidebar.button(get_text(lang, 'rules_edit_button'), use_container_width=True):
+            st.session_state.show_rules_editor = True 
+        
+        # --- SECCIÓN GESTIÓN DE LISTAS (AUTOCOMPLETADO) ---
+        # (Sin cambios)
         if st.session_state.get('autocomplete_options'):
             st.sidebar.markdown("---")
             with st.sidebar.expander(get_text(lang, 'manage_autocomplete_header'), expanded=False):
                 st.info(get_text(lang, 'manage_autocomplete_info'))
                 
-                col_options_map = {
-                    translate_column(lang, k): k 
-                    for k in st.session_state.autocomplete_options.keys()
-                }
-                
+                col_options_map = { translate_column(lang, k): k for k in st.session_state.autocomplete_options.keys() }
                 col_ui_selected = st.selectbox(
                     get_text(lang, 'select_column_to_edit'),
                     options=sorted(list(col_options_map.keys())),
