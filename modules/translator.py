@@ -1,4 +1,4 @@
-# modules/translator.py (VERSIÓN CON TEXTOS PARA GESTIÓN DE AUTOCOMPLETADO)
+# modules/translator.py (VERSIÓN CON TEXTO PARA FILTRO SELECTBOX)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -54,6 +54,8 @@ LANGUAGES = {
         "uploader_label": "Cargue su archivo de facturas",
         "add_filter_header": "Añadir Filtro",
         "column_select": "Seleccione una columna:",
+        # --- [NUEVO] Texto para el desplegable de filtro ---
+        "column_select_value": "Seleccione un valor:", 
         "search_text": "Texto a buscar (coincidencia parcial)",
         "add_filter_button": "Añadir Filtro",
         "warning_no_filter": "Debe seleccionar una columna y escribir un valor.",
@@ -140,7 +142,6 @@ LANGUAGES = {
         "reset_config_button": "🔄 Restablecer Todo (Limpiar)",
         "reset_config_success": "¡Configuración restablecida a valores por defecto!",
         
-        # --- [NUEVO] GESTIÓN DE AUTOCOMPLETADO ---
         "manage_autocomplete_header": "📋 Gestión de Listas (Autocompletado)",
         "manage_autocomplete_info": "Añada o elimine opciones en los desplegables de la tabla (ej. nuevos proveedores).",
         "select_column_to_edit": "Seleccione la columna a editar:",
@@ -152,7 +153,6 @@ LANGUAGES = {
         "remove_option_btn": "🗑️ Eliminar Seleccionados",
         "option_added_success": "✅ ¡Opción '{val}' añadida a '{col}'!",
         "options_removed_success": "✅ ¡{n} opciones eliminadas de '{col}'!",
-        # --- [FIN] ---
         
         "date_format_help": "Formato de guardado: DD-MM-AAAA. Se intentará analizar otros formatos (ej. 20220309).",
         "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
@@ -166,6 +166,8 @@ LANGUAGES = {
         "uploader_label": "Upload your invoice file",
         "add_filter_header": "Add Filter",
         "column_select": "Select a column:",
+        # --- [NUEVO] Texto para el desplegable de filtro ---
+        "column_select_value": "Select a value:",
         "search_text": "Text to search (partial match)",
         "add_filter_button": "Add Filter",
         "warning_no_filter": "You must select a column and enter a value.",
@@ -252,7 +254,6 @@ LANGUAGES = {
         "reset_config_button": "🔄 Reset All (Clear)",
         "reset_config_success": "Configuration reset to defaults!",
 
-        # --- [NUEVO] GESTIÓN DE AUTOCOMPLETADO ---
         "manage_autocomplete_header": "📋 List Management (Autocomplete)",
         "manage_autocomplete_info": "Add or remove options in the table dropdowns (e.g. new vendors).",
         "select_column_to_edit": "Select column to edit:",
@@ -264,7 +265,6 @@ LANGUAGES = {
         "remove_option_btn": "🗑️ Remove Selected",
         "option_added_success": "✅ Option '{val}' added to '{col}'!",
         "options_removed_success": "✅ {n} options removed from '{col}'!",
-        # --- [FIN] ---
         
         "date_format_help": "Save format: MM-DD-AAAA. Other formats (e.g., 20220309) will be auto-parsed.",
         "date_format_es": "%d-%m-%Y", # Formato Día-Mes-Año
