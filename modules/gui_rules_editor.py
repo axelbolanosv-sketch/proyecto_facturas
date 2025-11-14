@@ -1,13 +1,14 @@
-# modules/gui_rules_editor.py (VERSIÓN 3.2 - CORREGIDO APIException)
+# modules/gui_rules_editor.py (VERSIÓN 3.4 - CORREGIDO AttributeError)
 # Renderiza el editor modal (st.dialog) para las reglas de negocio.
-# - Soluciona el bug de StreamlitAPIException al limpiar el formulario.
+# - Soluciona el bug 'dict' object has no attribute 'to_dict'
+# - Elimina el callback on_change para estabilizar el estado.
 
 import streamlit as st
 import pandas as pd
 from modules.translator import get_text
 from modules.rules_service import (
-    log_change, 
-    apply_priority_rules, 
+    log_change,
+    apply_priority_rules,
     get_audit_log_excel,
     get_default_rules
 )
@@ -37,20 +38,19 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
     if 'rules_editor_original_rules' not in st.session_state:
         st.session_state.rules_editor_original_rules = copy.deepcopy(rules_list)
 
-    def _callback_rules_editor_changed():
-        """Guarda los cambios del editor en el estado para que persistan."""
-        st.session_state.priority_rules = st.session_state.rules_editor_data.to_dict('records')
-        
-        # [FIX] Aplicar reglas inmediatamente al editar la tabla
-        if st.session_state.df_staging is not None:
-            df_staging_copy = st.session_state.df_staging.copy()
-            st.session_state.df_staging = apply_priority_rules(df_staging_copy)
+    # [INICIO] CORRECCIÓN DE BUG
+    # Se elimina la función 'def _callback_rules_editor_changed():'
+    # y el parámetro 'on_change=' del data_editor.
+    # El callback intentaba leer 'st.session_state.rules_editor_data'
+    # como un DataFrame, pero es un 'dict', causando errores.
+    # La lógica de guardado ahora depende solo del botón "Guardar".
+    # [FIN] CORRECCIÓN DE BUG
 
     edited_df = st.data_editor(
         pd.DataFrame(rules_list),
         key="rules_editor_data",
         num_rows="dynamic",
-        on_change=_callback_rules_editor_changed,
+        # on_change=_callback_rules_editor_changed, <--- LÍNEA ELIMINADA
         column_config={
             "id": st.column_config.TextColumn("Rule ID", disabled=True),
             "enabled": st.column_config.CheckboxColumn("Activada"),
@@ -75,12 +75,12 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
     st.markdown("---")
 
     # --- 2. AÑADIR NUEVA REGLA (SIN FORMULARIO) ---
-    
+    # (Esta sección no tiene cambios)
     with st.expander(get_text(lang, "rules_add_new_header"), expanded=True):
         st.markdown(f"**{get_text(lang, 'rules_add_new_subheader')}**")
         
         col_type = st.selectbox(
-            get_text(lang, 'rules_add_col_type'), 
+            get_text(lang, 'rules_add_col_type'),
             options=[""] + all_columns_en,
             key="add_rule_type"
         )
@@ -149,19 +149,15 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
                 
                 message_placeholder.success(get_text(lang, 'rules_add_success').format(val=final_value))
                 
-                # --- [INICIO] CORRECCIÓN StreamlitAPIException ---
-                # En lugar de "st.session_state.add_rule_type = ''"
-                # Borramos las claves. Streamlit las recreará en el rerun.
                 keys_to_delete = [
-                    "add_rule_type", "add_rule_value_select", "add_rule_value_text", 
+                    "add_rule_type", "add_rule_value_select", "add_rule_value_text",
                     "add_rule_priority", "add_rule_reason"
                 ]
                 for key in keys_to_delete:
                     if key in st.session_state:
                         del st.session_state[key]
-                # --- [FIN] CORRECCIÓN StreamlitAPIException ---
                 
-                st.rerun() 
+                st.rerun()
 
     st.markdown("---")
     
@@ -181,7 +177,20 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
             if not reason_for_change:
                 st.error(get_text(lang, "rules_editor_reason_error"))
             else:
-                new_rules = st.session_state.get('priority_rules', get_default_rules())
+                
+                # [INICIO] CORRECCIÓN DEL AttributeError
+                # La línea original era:
+                # new_rules = st.session_state.rules_editor_data.to_dict('records')
+                #
+                # 'st.session_state.rules_editor_data' es un 'dict' (diccionario)
+                # que contiene los cambios, NO es un DataFrame.
+                #
+                # La corrección es usar la variable 'edited_df',
+                # que es el DataFrame retornado por 'st.data_editor'
+                # y SÍ contiene el estado final de la tabla.
+                new_rules = edited_df.to_dict('records')
+                # [FIN] CORRECCIÓN DEL AttributeError
+                
                 old_rules = st.session_state.rules_editor_original_rules
                 
                 log_change(reason_for_change, old_rules, new_rules)
@@ -200,6 +209,7 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
                 st.rerun()
 
     with col_cancel:
+        # (Sin cambios)
         if st.button(get_text(lang, "rules_editor_cancel_btn"), use_container_width=True):
             st.session_state.show_rules_editor = False
             # Revertir cambios no guardados
@@ -211,6 +221,7 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
     st.markdown(f"**{get_text(lang, 'audit_log_header')}**")
     st.info(get_text(lang, "audit_log_info"))
     
+    # (Sin cambios)
     log_data = get_audit_log_excel()
     st.download_button(
         label=get_text(lang, "audit_log_download_btn"),

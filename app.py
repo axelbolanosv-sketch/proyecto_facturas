@@ -8,12 +8,21 @@ from modules.filters import aplicar_filtros_dinamicos
 from modules.translator import get_text, translate_column
 
 # --- 1. Importar Módulos de GUI ---
-from modules.gui_utils import (
+
+# [INICIO] CORRECCIÓN DE IMPORTACIÓN
+# Se cambió 'modules.gui_utils' por 'modules.utils'.
+# El archivo 'modules/utils.py' (tu archivo número 37) contiene
+# la lógica de inicialización de estado correcta (incluyendo 'priority_rules').
+# El archivo 'modules/gui_utils.py' (tu archivo 38) es una versión
+# antigua que no debe usarse.
+from modules.utils import (
     initialize_session_state,
     load_custom_css,
     load_and_process_files,
-    clear_state_and_prepare_reload 
+    clear_state_and_prepare_reload
 )
+# [FIN] CORRECCIÓN DE IMPORTACIÓN
+
 from modules.gui_sidebar import render_sidebar
 from modules.gui_views import (
     render_active_filters,
@@ -23,10 +32,10 @@ from modules.gui_views import (
 )
 from modules.gui_rules_editor import render_rules_editor
 
-import streamlit_hotkeys as hotkeys 
+import streamlit_hotkeys as hotkeys
 
 # --- 2. Configuración Inicial ---
-initialize_session_state()
+initialize_session_state()  # Esta ahora es la función correcta de utils.py
 lang = st.session_state.language
 st.set_page_config(
     layout="wide",
@@ -36,12 +45,12 @@ load_custom_css()
 
 # --- 3. Hotkeys (Sin Cambios) ---
 hotkeys.activate([
-    hotkeys.hk("add_row", "i", ctrl=True, prevent_default=True, help="Insertar Fila (Ctrl+I)"), 
+    hotkeys.hk("add_row", "i", ctrl=True, prevent_default=True, help="Insertar Fila (Ctrl+I)"),
     hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True, help="Guardar Borrador (Ctrl+S)"),
     hotkeys.hk("save_stable", "s", ctrl=True, shift=True, prevent_default=True, help="Guardar Estable (Ctrl+Shift+S)"),
     hotkeys.hk("revert_stable", "z", ctrl=True, prevent_default=True, help="Revertir a Estable (Ctrl+Z)"),
 ],
-    key='main_hotkeys' 
+    key='main_hotkeys'
 )
 
 # --- 4. Títulos y Lógica de Columnas (Sin Cambios) ---
@@ -51,7 +60,7 @@ st.write(get_text(lang, 'subtitle'))
 todas_las_columnas_ui = None
 col_map_ui_to_en = None
 todas_las_columnas_en = [] # Empezar con lista vacía
-df_staging_copy = None 
+df_staging_copy = None
 
 if st.session_state.df_staging is not None:
     df_staging_copy = st.session_state.df_staging.copy()
@@ -71,7 +80,7 @@ if st.session_state.get('show_rules_editor', False):
 # --- 5. Renderizar Barra Lateral ---
 # (Sin cambios)
 uploaded_files = render_sidebar(
-    lang, 
+    lang,
     df_loaded=(st.session_state.df_staging is not None),
     todas_las_columnas_ui=todas_las_columnas_ui,
     col_map_es_to_en=col_map_ui_to_en,
@@ -102,13 +111,13 @@ if df_staging_copy is not None:
             df_staging_copy,
             st.session_state.filtros_activos
         )
-        
+
         render_kpi_dashboard(lang, resultado_df)
-        
+
         st.markdown("---")
 
         st.markdown(f"## {get_text(lang, 'results_header').format(num_filas=len(resultado_df))}")
-        
+
         view_type = st.radio(
             label=get_text(lang, 'view_type_header'),
             options=[get_text(lang, 'view_type_detailed'), get_text(lang, 'view_type_grouped')],
@@ -116,39 +125,39 @@ if df_staging_copy is not None:
             label_visibility="collapsed",
             key='view_type_radio'
         )
-        
+
         if view_type == get_text(lang, 'view_type_detailed'):
-            
+
             # --- LÓGICA DE ORDENAMIENTO (Sin Cambios) ---
             priority_map = {
-                "🚩 Maxima Prioridad": 4, 
-                "Maxima Prioridad": 4, 
+                "🚩 Maxima Prioridad": 4,
+                "Maxima Prioridad": 4,
                 "Alta": 3,
                 "Media": 2,
                 "Minima": 1,
             }
-            op_default = "Default (Sin Orden)" 
+            op_default = "Default (Sin Orden)"
             op_desc = "🔼 Maxima a Minima"
             op_asc = "🔽 Minima a Maxima"
             radio_options = [op_default, op_desc, op_asc]
-            
+
             current_sort_val = st.session_state.get('priority_sort_order', None)
-            
+
             if current_sort_val == 'DESC':
                 current_index = 1
             elif current_sort_val == 'ASC':
                 current_index = 2
             else:
                 current_index = 0
-            
+
             selected_option = st.radio(
-                "Ordenar por:", 
+                "Ordenar por:",
                 options=radio_options,
                 index=current_index,
                 horizontal=True,
                 key='priority_sort_radio'
             )
-            
+
             st.markdown("---")
 
             new_sort_val = None
@@ -156,62 +165,62 @@ if df_staging_copy is not None:
                 new_sort_val = 'DESC'
             elif selected_option == op_asc:
                 new_sort_val = 'ASC'
-            
+
             st.session_state.priority_sort_order = new_sort_val
 
             age_col_exists = 'Invoice Date Age' in resultado_df.columns
-            
+
             if new_sort_val is not None and 'Priority' in resultado_df.columns:
                 try:
                     ascending_flag_priority = (new_sort_val == 'ASC')
                     resultado_df['_sort_key'] = resultado_df['Priority'].map(priority_map).fillna(0)
-                    
+
                     sort_by_cols = ['_sort_key']
                     sort_ascending_flags = [ascending_flag_priority]
-                    
+
                     if age_col_exists:
                         sort_by_cols.append('Invoice Date Age')
                         sort_ascending_flags.append(False)
-                    
+
                     resultado_df = resultado_df.sort_values(
                         by=sort_by_cols,
                         ascending=sort_ascending_flags,
                         kind='stable'
                     )
-                    
+
                     resultado_df = resultado_df.drop(columns=['_sort_key'])
 
                 except Exception as e:
                     st.warning(f"No se pudo aplicar el ordenamiento por prioridad y antigüedad: {e}")
-            
+
             # --- Renderizado de Vista (Sin Cambios) ---
             render_detailed_view(
-                lang=lang, 
+                lang=lang,
                 resultado_df_filtrado=resultado_df,
-                df_master_copy=df_staging_copy, 
+                df_master_copy=df_staging_copy,
                 col_map_ui_to_en=col_map_ui_to_en,
                 todas_las_columnas_en=todas_las_columnas_en
             )
-            
+
         else: # (Si la vista es Agrupada)
             render_grouped_view(
-                lang, 
-                resultado_df, 
+                lang,
+                resultado_df,
                 col_map_ui_to_en,
                 todas_las_columnas_en
             )
-    
+
     except Exception as e:
         st.error(f"Error inesperado en la aplicación: {e}")
-        st.exception(e) 
+        st.exception(e)
         clear_state_and_prepare_reload()
         st.rerun()
 
 else:
     # (Lógica 'else' sin cambios)
-    if not uploaded_files: 
+    if not uploaded_files:
         st.info(get_text(lang, 'info_upload'))
-    
+
     if st.session_state.filtros_activos:
         st.session_state.filtros_activos = []
     if st.session_state.columnas_visibles is not None:

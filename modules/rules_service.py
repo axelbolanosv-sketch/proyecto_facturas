@@ -1,4 +1,4 @@
-# modules/rules_service.py (CORREGIDO - LÓGICA DE JERARQUÍA ARREGLADA)
+# modules/rules_service.py (CORREGIDO - LÓGICA DE JERARQUÍA ARREGLADA v4)
 # Contiene el motor de reglas de negocio y el servicio de auditoría.
 
 import streamlit as st
@@ -11,7 +11,7 @@ import copy # Importar para copias profundas
 def get_default_rules():
     """
     Define las reglas de prioridad por defecto.
-    (Descripciones corregidas y aclaradas)
+    (Sin cambios)
     """
     return [
         {
@@ -83,14 +83,17 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aplica el motor de reglas dinámicas al DataFrame.
     
-    --- LÓGICA DE JERARQUÍA CORREGIDA ---
-    1. (Primero) Se aplica la lógica de reglas (de mayor 'order' a menor 'order').
-       Esto permite que reglas con 'order: 10' sobrescriban a reglas con 'order: 20'.
-    2. (Segundo) Se aplica cualquier "Ingreso Manual" (ej. "Media", "Alta")
-       que el usuario haya escrito en la tabla. Esto sobrescribe CUALQUIER regla.
+    --- LÓGICA DE JERARQUÍA CORREGIDA (v4) ---
+    Se corrigió el ordenamiento. Ahora 'reverse=False', para que
+    las reglas se ejecuten en el orden numérico correcto (10, 20, 30, 100).
+    Esto cumple con la ayuda "Número más bajo se ejecuta primero"
+    y permite que las reglas más altas (como la tuya en 100)
+    sobrescriban a las reglas base (como GNTD en 30).
     """
     if 'Priority' not in df.columns:
         return df
+
+    # --- [INICIO] CORRECCIÓN DE JERARQUÍA ---
 
     # 1. Cargar reglas activas y ordenarlas
     rules = st.session_state.get('priority_rules')
@@ -98,25 +101,23 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
         rules = get_default_rules()
         st.session_state.priority_rules = rules
         
-    # [FIX] Ordenar de MAYOR a MENOR.
-    # Las reglas de baja prioridad (ej. 30) se ejecutan primero.
-    # Las reglas de alta prioridad (ej. 10) se ejecutan al final,
-    # sobrescribiendo a las anteriores.
+    # [INICIO] CORRECIÓN DEL BUG DE ORDENAMIENTO
+    # Se cambió 'reverse=True' por 'reverse=False'.
+    # Ahora el orden de ejecución será 20, 30, 100 (tu regla), etc.
+    # Esto asegura que tu regla (100) se ejecute al final y
+    # sobrescriba la regla GNTD (30).
     active_rules = sorted(
-        [r for r in rules if r.get('enabled', False)], 
+        [r for r in rules if r.get('enabled', False)],
         key=lambda x: x.get('order', 99),
-        reverse=True # <--- ¡El FIX LÓGICO ESTÁ AQUÍ!
+        reverse=False # <-- ¡ESTA ES LA CORRECCIÓN!
     )
+    # [FIN] CORRECIÓN DEL BUG DE ORDENAMIENTO
     
-    # 2. Definir prioridades manuales (lo que el usuario escribe)
-    manual_priorities = ["Minima", "Media", "Alta", "Baja Prioridad", "Low", "Medium", "High", "Zero"]
-    
-    # 3. Inicializar columnas de resultado
-    # Partimos de un estado limpio
-    df['Priority_Calculated'] = "Sin Regla Asignada" 
+    # 2. Inicializar columnas de resultado
+    df['Priority_Calculated'] = "Sin Regla Asignada"
     df['Priority_Reason'] = "Sin Regla Asignada"
     
-    # 4. Iterar Reglas Dinámicas
+    # 3. Iterar Reglas Dinámicas (Paso 1: Las Reglas mandan)
     for rule in active_rules:
         rule_type = rule.get('type')
         rule_value = rule.get('value')
@@ -124,40 +125,51 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
         rule_reason = rule.get('reason', f"Regla: {rule_type} es {rule_value}")
 
         if not all([rule_type, rule_value, rule_priority]):
-            continue 
+            continue
 
         try:
             if rule_type in df.columns:
                 mask_rule = (
                     df[rule_type].fillna("").astype(str).str.contains(rule_value, case=False, na=False)
                 )
-                
-                # Aplicar regla. Como el bucle está invertido,
-                # las reglas de menor 'order' (más prioritarias)
-                # se aplican al final, sobrescribiendo correctamente.
+                # Ahora que el bucle está ordenado (20, 30, 100),
+                # tu regla de Anggie (100) se aplicará al final,
+                # sobrescribiendo 'Minima' de GNTD (30).
                 df.loc[mask_rule, 'Priority_Calculated'] = rule_priority
                 df.loc[mask_rule, 'Priority_Reason'] = rule_reason
         except Exception:
             pass 
 
-    # 5. Aplicar Prioridad Manual (SOBREESCRIBE TODO)
-    # Comprobamos la columna 'Priority' original (la que edita el usuario)
-    mask_manual = df['Priority'].isin(manual_priorities)
+    # 4. Aplicar Prioridad Manual (Paso 2: Rellenar "huecos")
+    # (Esta lógica de la v3 es correcta y se mantiene)
+    manual_priorities = [
+        "Minima", "Media", "Alta", "Baja Prioridad",
+        "Low", "Medium", "High", "Zero"
+    ]
     
-    df.loc[mask_manual, 'Priority_Calculated'] = df['Priority']
-    df.loc[mask_manual, 'Priority_Reason'] = "Ingreso Manual"
+    mask_input_is_manual = df['Priority'].isin(manual_priorities)
+    mask_rule_found_nothing = (df['Priority_Reason'] == "Sin Regla Asignada")
     
-    # 6. Asignar la nueva prioridad calculada
+    mask_apply_manual = mask_input_is_manual & mask_rule_found_nothing
+    
+    df.loc[mask_apply_manual, 'Priority_Calculated'] = df['Priority']
+    df.loc[mask_apply_manual, 'Priority_Reason'] = "Ingreso Manual"
+    
+    # --- [FIN] LÓGICA DE CORRECCIÓN DE JERARQUÍA ---
+    
+    # 5. Asignar la nueva prioridad calculada
     df['Priority'] = df['Priority_Calculated']
     
-    df = df.drop(columns=['Priority_Calculated'])
-    
     return df
+
+# --- (El resto del archivo: log_change y get_audit_log_excel) ---
+# --- (No tienen cambios y se omiten por brevedad) ---
 
 def log_change(reason: str, old_rules: list, new_rules: list):
     """
     Compara dos listas de reglas y registra las diferencias
     en el log de auditoría.
+    (Sin cambios)
     """
     if 'audit_log' not in st.session_state:
         st.session_state.audit_log = []
@@ -218,6 +230,7 @@ def get_audit_log_excel():
     """
     Convierte el log de auditoría en memoria a un archivo Excel
     listo para descargar.
+    (Sin cambios)
     """
     log_df = pd.DataFrame(st.session_state.get('audit_log', []))
     
