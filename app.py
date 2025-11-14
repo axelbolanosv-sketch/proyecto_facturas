@@ -1,4 +1,4 @@
-# app.py (VERSIÓN CON HOOK PARA EDITOR DE REGLAS)
+# app.py (VERSIÓN CON HOOK PARA EDITOR DE REGLAS MEJORADO)
 # Este archivo actúa como el "director de orquesta", coordinando
 # los módulos de UI y utilidades.
 
@@ -21,13 +21,11 @@ from modules.gui_views import (
     render_detailed_view,
     render_grouped_view
 )
-# --- [NUEVO] Importar el editor de reglas ---
 from modules.gui_rules_editor import render_rules_editor
 
 import streamlit_hotkeys as hotkeys 
 
 # --- 2. Configuración Inicial ---
-# (Se llama a initialize_session_state() PRIMERO)
 initialize_session_state()
 lang = st.session_state.language
 st.set_page_config(
@@ -46,18 +44,13 @@ hotkeys.activate([
     key='main_hotkeys' 
 )
 
-# --- [NUEVO] Renderizar el Editor de Reglas (si está activo) ---
-if st.session_state.get('show_rules_editor', False):
-    render_rules_editor()
-# --- [FIN] ---
-
 # --- 4. Títulos y Lógica de Columnas (Sin Cambios) ---
 st.markdown(f"<h1>🔎 {get_text(lang, 'title')}</h1>", unsafe_allow_html=True)
 st.write(get_text(lang, 'subtitle'))
 
 todas_las_columnas_ui = None
 col_map_ui_to_en = None
-todas_las_columnas_en = None
+todas_las_columnas_en = [] # Empezar con lista vacía
 df_staging_copy = None 
 
 if st.session_state.df_staging is not None:
@@ -65,6 +58,15 @@ if st.session_state.df_staging is not None:
     todas_las_columnas_en = list(df_staging_copy.columns)
     col_map_ui_to_en = {translate_column(lang, col): col for col in todas_las_columnas_en}
     todas_las_columnas_ui = [translate_column(lang, col) for col in todas_las_columnas_en]
+
+# --- [INICIO] MODIFICACIÓN: Renderizar el Editor de Reglas ---
+if st.session_state.get('show_rules_editor', False):
+    # Ahora pasamos las columnas y las opciones de autocompletado al editor
+    render_rules_editor(
+        all_columns_en=todas_las_columnas_en,
+        autocomplete_options=st.session_state.get('autocomplete_options', {})
+    )
+# --- [FIN] MODIFICACIÓN ---
 
 # --- 5. Renderizar Barra Lateral ---
 # (Sin cambios)
@@ -83,7 +85,7 @@ if uploaded_files and st.session_state.df_staging is None:
     st.rerun()
 
 # --- 7. Lógica Principal (Renderizado de Página) ---
-# (Casi sin cambios, solo un fallback)
+# (Sin cambios)
 if df_staging_copy is None and st.session_state.df_staging is not None:
     df_staging_copy = st.session_state.df_staging.copy()
     if todas_las_columnas_en is None:

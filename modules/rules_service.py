@@ -1,4 +1,4 @@
-# modules/rules_service.py (NUEVO ARCHIVO)
+# modules/rules_service.py (CORREGIDO - LÓGICA DE JERARQUÍA ARREGLADA)
 # Contiene el motor de reglas de negocio y el servicio de auditoría.
 
 import streamlit as st
@@ -6,112 +6,117 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import io
+import copy # Importar para copias profundas
 
 def get_default_rules():
     """
-    Define las reglas de prioridad por defecto que el sistema
-    usará al iniciar por primera vez.
+    Define las reglas de prioridad por defecto.
+    (Descripciones corregidas y aclaradas)
     """
     return [
         {
             "id": "rule_001",
             "enabled": True,
-            "order": 10,
+            "order": 20, # Orden más alto (menor prioridad)
             "type": "Pay Group",
             "value": "DIST",
             "priority": "🚩 Maxima Prioridad",
-            "reason": "Regla Default: Pagos Intercompany"
+            "reason": "Regla Sistema: PayGroup DIST"
         },
         {
             "id": "rule_002",
             "enabled": True,
-            "order": 11,
+            "order": 20,
             "type": "Pay Group",
             "value": "INTERCOMPANY",
             "priority": "🚩 Maxima Prioridad",
-            "reason": "Regla Default: Pagos Intercompany"
+            "reason": "Regla Sistema: PayGroup INTERCOMPANY"
         },
         {
             "id": "rule_003",
             "enabled": True,
-            "order": 12,
+            "order": 20,
             "type": "Pay Group",
             "value": "PAYROLL",
             "priority": "🚩 Maxima Prioridad",
-            "reason": "Regla Default: Nómina"
+            "reason": "Regla Sistema: PayGroup PAYROLL (Nómina)"
         },
         {
             "id": "rule_004",
             "enabled": True,
-            "order": 13,
+            "order": 20,
             "type": "Pay Group",
             "value": "RENTS",
             "priority": "🚩 Maxima Prioridad",
-            "reason": "Regla Default: Alquileres"
+            "reason": "Regla Sistema: PayGroup RENTS (Alquileres)"
         },
         {
             "id": "rule_005",
             "enabled": True,
-            "order": 14,
+            "order": 20,
             "type": "Pay Group",
             "value": "SCF",
             "priority": "🚩 Maxima Prioridad",
-            "reason": "Regla Default: SCF"
+            "reason": "Regla Sistema: PayGroup SCF"
         },
         {
             "id": "rule_006",
             "enabled": True,
-            "order": 20,
+            "order": 30, # Orden más alto (menor prioridad)
             "type": "Pay Group",
             "value": "PAYGROUP",
             "priority": "Minima",
-            "reason": "Regla Default: Pagos agrupados"
+            "reason": "Regla Sistema: PayGroup PAYGROUP (Baja)"
         },
         {
             "id": "rule_007",
             "enabled": True,
-            "order": 21,
+            "order": 30,
             "type": "Pay Group",
             "value": "GNTD",
             "priority": "Minima",
-            "reason": "Regla Default: GNTD"
+            "reason": "Regla Sistema: PayGroup GNTD (Baja)"
         }
     ]
 
 def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aplica el motor de reglas dinámicas al DataFrame.
-    Esta función REEMPLAZA la lógica estática (hard-coded).
     
-    El orden de prioridad es:
-    1. Una prioridad manual (Alta, Media, Minima) escrita en la celda.
-    2. Reglas dinámicas (leídas de st.session_state.priority_rules).
-    3. Valor por defecto (si no hay manual y no hay regla).
+    --- LÓGICA DE JERARQUÍA CORREGIDA ---
+    1. (Primero) Se aplica la lógica de reglas (de mayor 'order' a menor 'order').
+       Esto permite que reglas con 'order: 10' sobrescriban a reglas con 'order: 20'.
+    2. (Segundo) Se aplica cualquier "Ingreso Manual" (ej. "Media", "Alta")
+       que el usuario haya escrito en la tabla. Esto sobrescribe CUALQUIER regla.
     """
-    if 'Priority' not in df.columns or 'Pay Group' not in df.columns:
+    if 'Priority' not in df.columns:
         return df
 
     # 1. Cargar reglas activas y ordenarlas
-    rules = st.session_state.get('priority_rules', get_default_rules())
+    rules = st.session_state.get('priority_rules')
+    if rules is None:
+        rules = get_default_rules()
+        st.session_state.priority_rules = rules
+        
+    # [FIX] Ordenar de MAYOR a MENOR.
+    # Las reglas de baja prioridad (ej. 30) se ejecutan primero.
+    # Las reglas de alta prioridad (ej. 10) se ejecutan al final,
+    # sobrescribiendo a las anteriores.
     active_rules = sorted(
         [r for r in rules if r.get('enabled', False)], 
-        key=lambda x: x.get('order', 99)
+        key=lambda x: x.get('order', 99),
+        reverse=True # <--- ¡El FIX LÓGICO ESTÁ AQUÍ!
     )
     
-    # 2. Definir prioridades manuales (estas tienen precedencia)
+    # 2. Definir prioridades manuales (lo que el usuario escribe)
     manual_priorities = ["Minima", "Media", "Alta", "Baja Prioridad", "Low", "Medium", "High", "Zero"]
     
     # 3. Inicializar columnas de resultado
-    # 'Priority_Reason' es la columna que explica el "por qué" (el "tooltip")
-    df['Priority_Reason'] = "Ingreso Manual" # Default si se edita a mano
-    df['Priority_Calculated'] = df['Priority'] # Empezar con el valor existente
+    # Partimos de un estado limpio
+    df['Priority_Calculated'] = "Sin Regla Asignada" 
+    df['Priority_Reason'] = "Sin Regla Asignada"
     
-    # Crear máscaras base
-    mask_manual = df['Priority'].isin(manual_priorities)
-    mask_excel_maxima = (df['Priority'] == "Maxima Prioridad") | (df['Priority'] == "🚩 Maxima Prioridad")
-
     # 4. Iterar Reglas Dinámicas
-    # Iteramos por las reglas (ordenadas por 'order')
     for rule in active_rules:
         rule_type = rule.get('type')
         rule_value = rule.get('value')
@@ -119,34 +124,32 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
         rule_reason = rule.get('reason', f"Regla: {rule_type} es {rule_value}")
 
         if not all([rule_type, rule_value, rule_priority]):
-            continue # Regla mal configurada
+            continue 
 
-        # Crear máscara para esta regla
         try:
-            # Solo aplicar si la columna existe y no es manual o máxima del excel
             if rule_type in df.columns:
                 mask_rule = (
                     df[rule_type].fillna("").astype(str).str.contains(rule_value, case=False, na=False)
                 )
                 
-                # Aplicar regla SOLO si NO es manual y NO es Maxima (del Excel)
-                # Las reglas dinámicas tienen menos prioridad que la edición manual
-                apply_mask = mask_rule & ~mask_manual & ~mask_excel_maxima
-                
-                df.loc[apply_mask, 'Priority_Calculated'] = rule_priority
-                df.loc[apply_mask, 'Priority_Reason'] = rule_reason
+                # Aplicar regla. Como el bucle está invertido,
+                # las reglas de menor 'order' (más prioritarias)
+                # se aplican al final, sobrescribiendo correctamente.
+                df.loc[mask_rule, 'Priority_Calculated'] = rule_priority
+                df.loc[mask_rule, 'Priority_Reason'] = rule_reason
         except Exception:
-            pass # Ignorar reglas rotas (ej. columna no existe)
+            pass 
 
-    # 5. Manejar casos que no cayeron en reglas
-    # Si no es manual y no es Maxima (Excel), y no cayó en regla, es "Default" (vacío)
-    mask_default = ~mask_manual & ~mask_excel_maxima & (df['Priority_Calculated'] == df['Priority'])
-    df.loc[mask_default, 'Priority_Reason'] = "Sin Regla Asignada"
-
+    # 5. Aplicar Prioridad Manual (SOBREESCRIBE TODO)
+    # Comprobamos la columna 'Priority' original (la que edita el usuario)
+    mask_manual = df['Priority'].isin(manual_priorities)
+    
+    df.loc[mask_manual, 'Priority_Calculated'] = df['Priority']
+    df.loc[mask_manual, 'Priority_Reason'] = "Ingreso Manual"
+    
     # 6. Asignar la nueva prioridad calculada
     df['Priority'] = df['Priority_Calculated']
     
-    # Limpiar columnas temporales
     df = df.drop(columns=['Priority_Calculated'])
     
     return df
@@ -160,12 +163,10 @@ def log_change(reason: str, old_rules: list, new_rules: list):
         st.session_state.audit_log = []
         
     timestamp = datetime.now().isoformat()
-    # Simple placeholder. En un sistema real, se obtendría del login.
     user = "finance_user" 
 
-    # Convertir listas a diccionarios por ID para fácil comparación
-    old_map = {r['id']: r for r in old_rules}
-    new_map = {r['id']: r for r in new_rules}
+    old_map = {r['id']: r for r in copy.deepcopy(old_rules)}
+    new_map = {r['id']: r for r in copy.deepcopy(new_rules)}
 
     # 1. Nuevas Reglas
     for rule_id in new_map:
@@ -198,7 +199,8 @@ def log_change(reason: str, old_rules: list, new_rules: list):
             new_rule = new_map[rule_id]
             
             changes = []
-            for key in old_rule:
+            keys_to_compare = ["enabled", "order", "type", "value", "priority", "reason"]
+            for key in keys_to_compare:
                 if old_rule.get(key) != new_rule.get(key):
                     changes.append(f"{key}: '{old_rule.get(key)}' -> '{new_rule.get(key)}'")
             
@@ -219,13 +221,11 @@ def get_audit_log_excel():
     """
     log_df = pd.DataFrame(st.session_state.get('audit_log', []))
     
-    # Reordenar columnas para legibilidad
     if not log_df.empty:
         cols_order = [
             "timestamp", "user", "reason_for_change", 
             "action", "rule_id", "change_summary"
         ]
-        # Asegurarse de que todas las columnas existan
         for col in cols_order:
             if col not in log_df.columns:
                 log_df[col] = np.nan
