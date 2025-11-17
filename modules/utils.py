@@ -1,4 +1,4 @@
-# modules/gui_utils.py (VERSIÓN CON MOTOR DE REGLAS DINÁMICO)
+# modules/gui_utils.py (VERSIÓN CON MOTOR DE REGLAS Y FLAG DE CONFIG)
 # Contiene todas las funciones auxiliares para la GUI.
 
 import streamlit as st
@@ -48,7 +48,15 @@ def initialize_session_state():
         
     if 'show_rules_editor' not in st.session_state:
         st.session_state.show_rules_editor = False
-    # --- [FIN] ---
+    
+    # --- [INICIO] CORRECCIÓN (v2.4) ---
+    # (Línea de documentación interna)
+    # Añade la bandera (flag) para la lógica de "procesar una sola vez"
+    # del cargador de configuración.
+    if 'config_file_processed' not in st.session_state:
+        st.session_state.config_file_processed = False
+    # --- [FIN] CORRECCIÓN (v2.4) ---
+
 
 # --- 2. FUNCIÓN DE DISEÑO (CSS) ---
 def load_custom_css():
@@ -168,6 +176,7 @@ def load_and_process_files(uploaded_files, lang):
     Se elimina la lógica de prioridad estática y se reemplaza por
     una llamada al motor de reglas dinámico.
     """
+    # (El resto de la función no cambia)
     try:
         lista_de_dataframes = []
         files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
@@ -201,26 +210,22 @@ def load_and_process_files(uploaded_files, lang):
             
             # --- [INICIO] LÓGICA DE PRIORIDAD (MODIFICADA) ---
             
-            # 1. Asegurarse de que la columna 'Priority' exista
             if 'Priority' not in df_processed.columns:
                 df_processed['Priority'] = "" 
                 columnas_originales.append('Priority')
             df_processed['Priority'] = df_processed['Priority'].astype(str)
 
-            # 2. Asegurarse de que la columna 'Priority_Reason' exista
             if 'Priority_Reason' not in df_processed.columns:
                 df_processed['Priority_Reason'] = "Sin Regla Asignada"
                 columnas_originales.append('Priority_Reason')
 
-            # 3. Llamar al motor de reglas dinámico
-            # Esta función lee las reglas de st.session_state y aplica
-            # la lógica, llenando 'Priority' y 'Priority_Reason'.
+            # (Línea de documentación interna)
+            # Llama al motor de reglas dinámico
             df_processed = apply_priority_rules(df_processed)
             
             # --- [FIN] LÓGICA DE PRIORIDAD (MODIFICADA) ---
             
-            # --- Cálculo de 'Row Status' (basado en df_check) ---
-            # (Se añade 'Priority_Reason' a la lista de columnas a ignorar)
+            # --- Cálculo de 'Row Status' ---
             cols_to_ignore = ['Row Status', 'Priority_Reason']
             cols_to_check = [col for col in df_check.columns if col not in cols_to_ignore]
             
@@ -233,7 +238,7 @@ def load_and_process_files(uploaded_files, lang):
                 get_text(lang, 'status_complete')
             )
 
-            # --- Guardar las tres copias en el estado de la sesión ---
+            # --- Guardar las tres copias ---
             st.session_state.df_pristine = df_processed.copy()
             st.session_state.df_original = df_processed.copy()
             st.session_state.df_staging = df_processed.copy()
@@ -259,7 +264,7 @@ def load_and_process_files(uploaded_files, lang):
                             opciones = sorted(list(df_processed[col_en].astype(str).unique()))
                         autocomplete_options[col_en] = opciones
                     except Exception:
-                        autocomplete_options[col_en] = [] # Fallback
+                        autocomplete_options[col_en] = []
             
             st.session_state.autocomplete_options = autocomplete_options
             
@@ -298,8 +303,11 @@ def clear_state_and_prepare_reload():
     st.session_state.priority_sort_order = None
     
     # --- [NUEVO] Resetear estado de reglas y auditoría ---
-    # (No reseteamos las reglas, el usuario quiere que persistan)
-    # st.session_state.priority_rules = get_default_rules() 
-    # st.session_state.audit_log = [] 
     st.session_state.show_rules_editor = False
-    # --- [FIN] ---
+    
+    # --- [INICIO] CORRECCIÓN (v2.4) ---
+    # (Línea de documentación interna)
+    # Resetea la bandera de carga de configuración al
+    # cargar un nuevo archivo de Excel.
+    st.session_state.config_file_processed = False
+    # --- [FIN] CORRECCIÓN (v2.4) ---
