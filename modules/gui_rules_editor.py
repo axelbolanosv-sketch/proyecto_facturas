@@ -1,7 +1,26 @@
-# modules/gui_rules_editor.py (VERSIÓN 3.4 - CORREGIDO AttributeError)
+# modules/gui_rules_editor.py (VERSIÓN 4.0 - CORREGIDO BUG LÓGICO DE ESTADO)
 # Renderiza el editor modal (st.dialog) para las reglas de negocio.
-# - Soluciona el bug 'dict' object has no attribute 'to_dict'
-# - Elimina el callback on_change para estabilizar el estado.
+#
+# --- CORRECCIÓN DE BUG LÓGICO (v4.0) ---
+# Problema: Al editar (ej. un checkbox) o eliminar una fila y LUEGO
+# presionar "Añadir Nueva Regla" (que causa un 'st.rerun()'),
+# el 'st.data_editor' se recargaba con los datos de
+# 'st.session_state.rules_editor_temp_df' (el estado original),
+# perdiendo todas las ediciones y eliminaciones que no se habían guardado.
+#
+# Solución: La lógica de "Añadir Nueva Regla" ahora es más inteligente.
+# 1. El 'st.data_editor' (fuente) es 'rules_editor_temp_df'.
+# 2. El valor de retorno del editor es 'edited_df' (estado visual actual).
+# 3. Al "Añadir Nueva Regla", el código toma 'edited_df' (que ya
+#    contiene todas las ediciones/eliminaciones) como base.
+# 4. Concatena la nueva fila a 'edited_df'.
+# 5. Guarda este DataFrame combinado de nuevo en
+#    'st.session_state.rules_editor_temp_df'.
+# 6. Llama a 'st.rerun()'.
+#
+# Resultado: El editor se recarga con un estado que preserva
+# las ediciones, las eliminaciones Y la nueva fila añadida.
+# ---------------------------------------------------------------------
 
 import streamlit as st
 import pandas as pd
@@ -19,42 +38,63 @@ import copy
 def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
     """
     Renderiza el modal para editar las reglas de prioridad.
-    
+
     Args:
-        all_columns_en (list): Lista de TODAS las columnas (en inglés) del DataFrame.
+        all_columns_en (list): Lista de TODAS las columnas (en inglés)
+                               del DataFrame.
         autocomplete_options (dict): Diccionario de opciones de autocompletado.
     """
+    # (Línea de documentación interna)
+    # Obtiene el idioma actual del estado de la sesión.
     lang = st.session_state.language
+    
+    # (Línea de documentación interna)
+    # Muestra el texto de información/ayuda en la parte superior del modal.
     st.info(get_text(lang, "rules_editor_info"))
 
     # --- 1. GESTIÓN DE REGLAS EXISTENTES (CON DATA_EDITOR) ---
     
     st.markdown(f"**{get_text(lang, 'rules_editor_header')}**")
     
-    rules_list = st.session_state.get('priority_rules')
-    if rules_list is None:
-        rules_list = get_default_rules()
+    # [INICIO] LÓGICA DE ESTADO (v3.8 - v4.0)
     
-    if 'rules_editor_original_rules' not in st.session_state:
-        st.session_state.rules_editor_original_rules = copy.deepcopy(rules_list)
+    # (Línea de documentación interna)
+    # Comprueba si el estado temporal del editor ('rules_editor_temp_df') NO existe.
+    if "rules_editor_temp_df" not in st.session_state:
+        # (Línea de documentación interna)
+        # Si no existe, es la primera vez que se abre el modal.
+        # Carga las reglas desde el estado principal ('priority_rules').
+        rules_list = st.session_state.get('priority_rules')
+        if rules_list is None:
+            rules_list = get_default_rules()
+        
+        # (Línea de documentación interna)
+        # Crea el estado 'rules_editor_temp_df' como un DataFrame.
+        # Este es el DataFrame que "alimentará" al editor.
+        st.session_state.rules_editor_temp_df = pd.DataFrame(rules_list)
+        
+        # (Línea de documentación interna)
+        # Almacena una copia de seguridad de las reglas originales
+        # para la función "Cancelar".
+        if 'rules_editor_original_rules' not in st.session_state:
+            st.session_state.rules_editor_original_rules = copy.deepcopy(rules_list)
 
-    # [INICIO] CORRECCIÓN DE BUG
-    # Se elimina la función 'def _callback_rules_editor_changed():'
-    # y el parámetro 'on_change=' del data_editor.
-    # El callback intentaba leer 'st.session_state.rules_editor_data'
-    # como un DataFrame, pero es un 'dict', causando errores.
-    # La lógica de guardado ahora depende solo del botón "Guardar".
-    # [FIN] CORRECCIÓN DE BUG
-
+    # (Línea de documentación interna)
+    # El 'st.data_editor' usa 'st.session_state.rules_editor_temp_df'
+    # como su fuente de datos (argumento 'data').
+    # Usa 'key="rules_editor_data"' para su gestión de estado interna.
     edited_df = st.data_editor(
-        pd.DataFrame(rules_list),
-        key="rules_editor_data",
+        st.session_state.rules_editor_temp_df, # <-- DATO FUENTE
+        key="rules_editor_data",               # <-- CLAVE DEL WIDGET
         num_rows="dynamic",
-        # on_change=_callback_rules_editor_changed, <--- LÍNEA ELIMINADA
         column_config={
             "id": st.column_config.TextColumn("Rule ID", disabled=True),
             "enabled": st.column_config.CheckboxColumn("Activada"),
-            "order": st.column_config.NumberColumn("Orden", min_value=1),
+            "order": st.column_config.NumberColumn(
+                "Orden",
+                min_value=1,
+                help=get_text(lang, 'rules_editor_order_help')
+            ),
             "type": st.column_config.SelectboxColumn(
                 "Tipo de Columna",
                 options=all_columns_en,
@@ -66,27 +106,31 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
                 options=["🚩 Maxima Prioridad", "Alta", "Media", "Minima"],
                 required=True
             ),
-            "reason": st.column_config.TextColumn("Razón (para el log)", required=True)
+            "reason": st.column_config.TextColumn(
+                "Razón (para el log)",
+                required=True,
+                help=get_text(lang, 'rules_editor_reason_help')
+            )
         },
         hide_index=True,
         use_container_width=True
     )
+    # [FIN] LÓGICA DE ESTADO
 
     st.markdown("---")
 
     # --- 2. AÑADIR NUEVA REGLA (SIN FORMULARIO) ---
-    # (Esta sección no tiene cambios)
     with st.expander(get_text(lang, "rules_add_new_header"), expanded=True):
         st.markdown(f"**{get_text(lang, 'rules_add_new_subheader')}**")
         
+        # (Línea de documentación interna)
+        # ... (Renderizado de inputs no cambia) ...
         col_type = st.selectbox(
             get_text(lang, 'rules_add_col_type'),
             options=[""] + all_columns_en,
             key="add_rule_type"
         )
-        
         col_type_from_state = st.session_state.get("add_rule_type", "")
-        
         if col_type_from_state and col_type_from_state in autocomplete_options:
             options = [""] + sorted(autocomplete_options[col_type_from_state])
             st.selectbox(
@@ -99,7 +143,6 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
                 get_text(lang, 'rules_add_col_value_text'),
                 key="add_rule_value_text"
             )
-        
         st.selectbox(
             get_text(lang, 'rules_add_priority'),
             options=["", "🚩 Maxima Prioridad", "Alta", "Media", "Minima"],
@@ -110,10 +153,11 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
             placeholder=get_text(lang, 'rules_add_reason_placeholder'),
             key="add_rule_reason"
         )
-        
         message_placeholder = st.empty()
-        
-        submitted = st.button(get_text(lang, 'rules_add_new_btn'), key="add_rule_submit_btn")
+        submitted = st.button(
+            get_text(lang, 'rules_add_new_btn'),
+            key="add_rule_submit_btn"
+        )
         
         if submitted:
             col_type = st.session_state.add_rule_type
@@ -132,23 +176,35 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
                 new_rule = {
                     "id": f"rule_{uuid.uuid4().hex[:6]}",
                     "enabled": True,
-                    "order": 100, # Por defecto es 100, se puede editar en la tabla
+                    "order": 100,
                     "type": col_type,
                     "value": final_value,
                     "priority": col_priority,
                     "reason": col_reason
                 }
                 
-                current_rules = st.session_state.get('priority_rules', get_default_rules())
-                current_rules.append(new_rule)
-                st.session_state.priority_rules = current_rules
+                # [INICIO] CORRECCIÓN LÓGICA (v4.0)
                 
-                if st.session_state.df_staging is not None:
-                    df_staging_copy = st.session_state.df_staging.copy()
-                    st.session_state.df_staging = apply_priority_rules(df_staging_copy)
+                # (Línea de documentación interna)
+                # Convierte la nueva regla (dict) en un DataFrame de una fila.
+                new_rule_df = pd.DataFrame([new_rule])
                 
-                message_placeholder.success(get_text(lang, 'rules_add_success').format(val=final_value))
+                # (Línea de documentación interna)
+                # 'edited_df' es el valor de retorno del data_editor.
+                # Contiene TODAS las ediciones actuales (checks, deletes).
+                # Usamos este DF como la base para concatenar.
+                st.session_state.rules_editor_temp_df = pd.concat(
+                    [edited_df, new_rule_df],
+                    ignore_index=True
+                )
+                # [FIN] CORRECCIÓN LÓGICA
                 
+                message_placeholder.success(
+                    get_text(lang, 'rules_add_success').format(val=final_value)
+                )
+                
+                # (Línea de documentación interna)
+                # Limpia los campos de "Añadir Nueva Regla".
                 keys_to_delete = [
                     "add_rule_type", "add_rule_value_select", "add_rule_value_text",
                     "add_rule_priority", "add_rule_reason"
@@ -157,6 +213,10 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
                     if key in st.session_state:
                         del st.session_state[key]
                 
+                # (Línea de documentación interna)
+                # 'st.rerun()' recargará el modal. El editor leerá
+                # 'rules_editor_temp_df', que ahora contiene
+                # las ediciones, las eliminaciones Y la nueva fila.
                 st.rerun()
 
     st.markdown("---")
@@ -173,55 +233,84 @@ def render_rules_editor(all_columns_en: list, autocomplete_options: dict):
     col_save, col_cancel = st.columns(2)
 
     with col_save:
-        if st.button(get_text(lang, "rules_editor_save_btn"), type="primary", use_container_width=True):
+        # (Línea de documentación interna)
+        # Botón de Guardar (acción principal).
+        if st.button(
+            get_text(lang, "rules_editor_save_btn"),
+            type="primary",
+            use_container_width=True
+        ):
             if not reason_for_change:
                 st.error(get_text(lang, "rules_editor_reason_error"))
             else:
                 
-                # [INICIO] CORRECCIÓN DEL AttributeError
-                # La línea original era:
-                # new_rules = st.session_state.rules_editor_data.to_dict('records')
-                #
-                # 'st.session_state.rules_editor_data' es un 'dict' (diccionario)
-                # que contiene los cambios, NO es un DataFrame.
-                #
-                # La corrección es usar la variable 'edited_df',
-                # que es el DataFrame retornado por 'st.data_editor'
-                # y SÍ contiene el estado final de la tabla.
+                # (Línea de documentación interna)
+                # 'edited_df' es el valor de retorno del data_editor,
+                # contiene el estado final con todas las ediciones.
                 new_rules = edited_df.to_dict('records')
-                # [FIN] CORRECCIÓN DEL AttributeError
                 
                 old_rules = st.session_state.rules_editor_original_rules
                 
                 log_change(reason_for_change, old_rules, new_rules)
                 
+                # (Línea de documentación interna)
+                # Guarda el estado del editor en el estado principal.
                 st.session_state.priority_rules = new_rules
                 
+                # (Línea de documentación interna)
+                # Recalcula el DataFrame principal.
                 if st.session_state.df_staging is not None:
                     df_staging_copy = st.session_state.df_staging.copy()
-                    st.session_state.df_staging = apply_priority_rules(df_staging_copy)
+                    st.session_state.df_staging = apply_priority_rules(
+                        df_staging_copy
+                    )
                 
+                # [INICIO] LIMPIEZA DE ESTADO (v3.8)
                 st.session_state.show_rules_editor = False
                 del st.session_state.rules_editor_original_rules
+                del st.session_state.rules_editor_temp_df
+                if "rules_editor_data" in st.session_state:
+                    del st.session_state.rules_editor_data
+                # [FIN] LIMPIEZA DE ESTADO
                 
-                st.toast(get_text(lang, "rules_editor_save_success"), icon="✅")
+                st.toast(
+                    get_text(lang, "rules_editor_save_success"),
+                    icon="✅"
+                )
                 
                 st.rerun()
 
     with col_cancel:
-        # (Sin cambios)
-        if st.button(get_text(lang, "rules_editor_cancel_btn"), use_container_width=True):
+        # (Línea de documentación interna)
+        # Botón para cancelar y descartar cambios.
+        if st.button(
+            get_text(lang, "rules_editor_cancel_btn"),
+            use_container_width=True
+        ):
             st.session_state.show_rules_editor = False
-            # Revertir cambios no guardados
-            st.session_state.priority_rules = st.session_state.rules_editor_original_rules
+            
+            # (Línea de documentación interna)
+            # Revierte el estado principal a la copia de seguridad.
+            st.session_state.priority_rules = (
+                st.session_state.rules_editor_original_rules
+            )
+            
+            # [INICIO] LIMPIEZA DE ESTADO (v3.8)
             del st.session_state.rules_editor_original_rules
+            if 'rules_editor_temp_df' in st.session_state:
+                del st.session_state.rules_editor_temp_df
+            if 'rules_editor_data' in st.session_state:
+                del st.session_state.rules_editor_data
+            # [FIN] LIMPIEZA DE ESTADO
+            
             st.rerun()
 
+    # --- 4. DESCARGA DE LOG DE AUDITORÍA ---
+    # (Esta sección no requería cambios)
     st.markdown("---")
     st.markdown(f"**{get_text(lang, 'audit_log_header')}**")
     st.info(get_text(lang, "audit_log_info"))
     
-    # (Sin cambios)
     log_data = get_audit_log_excel()
     st.download_button(
         label=get_text(lang, "audit_log_download_btn"),
