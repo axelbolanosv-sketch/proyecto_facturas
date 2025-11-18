@@ -1,88 +1,90 @@
-# modules/gui_sidebar.py (VERSIÓN 2.5 - CORRECCIÓN DEFINITIVA DE RE-CARGA DE CONFIG)
-# Contiene toda la lógica para renderizar la barra lateral.
-#
-# --- CORRECCIÓN DE BUG (v2.5 Nov 2025) ---
-# Problema: La v2.4 fallaba porque el widget 'file_uploader' podía
-# reportar 'None' brevemente durante un 'rerun', activando el
-# 'else' que reseteaba la bandera 'config_file_processed' a 'False'.
-#
-# Solución: Se eliminó el bloque 'else'. La bandera ahora es "pegajosa".
-# Solo se resetea a 'False' por acciones explícitas del usuario:
-# 1. Al cargar un nuevo Excel (en 'clear_state_and_prepare_reload').
-# 2. Al presionar "Restablecer Todo" (lógica añadida a ese botón).
-# Esto previene que los filtros se sobrescriban en 'reruns' normales.
-# -----------------------------------------------------------------
+# modules/gui_sidebar.py
+# VERSIÓN 3.0: FIX REGLAS PEGAJOSAS (RESET/LOAD) Y LIMPIEZA PROFUNDA DE ESTADO
 
 import streamlit as st
 import json
 from modules.translator import get_text, translate_column
 from modules.utils import clear_state_and_prepare_reload
-# (Línea de documentación interna)
 # Importar el motor de reglas y las reglas por defecto.
 from modules.rules_service import get_default_rules, apply_priority_rules
 
-# (Línea de documentación interna)
-# Callback para el botón 'on_click' que abre el modal de reglas.
+# Callback para abrir el editor de reglas
 def _callback_open_rules_editor():
-    """
-    Establece el estado 'show_rules_editor' en True.
-    
-    Esta función se llama exclusivamente por el 'on_click' del botón
-    'show_rules_editor_btn' en la barra lateral.
-    """
+    """Establece el estado 'show_rules_editor' en True para abrir el modal."""
     st.session_state.show_rules_editor = True
+
+
+def _clear_rules_editor_cache():
+    """
+    Función auxiliar para limpiar el caché visual del editor de reglas.
+    
+    Esto obliga al modal (st.data_editor) a reconstruirse desde cero
+    usando los datos frescos de 'priority_rules', solucionando el
+    problema de reglas "fantasmas" o "pegadas".
+    """
+    keys_to_clear = [
+        'rules_editor_temp_df',        # El DataFrame temporal de edición
+        'rules_editor_original_rules', # La copia de seguridad para "Cancelar"
+        'rules_editor_data'            # El estado interno del widget st.data_editor
+    ]
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
 
 
 def callback_process_config(file):
     """
     Callback para cargar y aplicar un archivo de configuración JSON.
-    
-    Esta función ahora es llamada manualmente por la lógica de
-    renderizado para asegurar que se ejecute UNA SOLA VEZ.
+    Garantiza que el editor visual se sincronice con las nuevas reglas cargadas.
     """
     if file is None: return False
     try:
-        # (Línea de documentación interna)
-        # Carga el contenido del archivo JSON (BytesIO)
         config_loaded = json.load(file)
         
-        # (Línea de documentación interna)
-        # Aplica los valores del JSON al st.session_state
+        # 1. Cargar configuraciones básicas
         st.session_state.filtros_activos = config_loaded.get("filtros_activos", [])
         st.session_state.columnas_visibles = config_loaded.get("columnas_visibles", st.session_state.columnas_visibles)
         st.session_state.language = config_loaded.get("language", st.session_state.language)
         st.session_state.view_type_radio = config_loaded.get("view_type", get_text(st.session_state.language, 'view_type_detailed'))
         st.session_state.group_by_col_select = config_loaded.get("group_by_column", None)
         st.session_state.priority_sort_order = config_loaded.get("priority_sort_order", None)
+        
         if "autocomplete_options" in config_loaded:
             st.session_state.autocomplete_options = config_loaded["autocomplete_options"]
 
+        # 2. Cargar Reglas y Auditoría
         st.session_state.priority_rules = config_loaded.get("priority_rules", get_default_rules())
         st.session_state.audit_log = config_loaded.get("audit_log", [])
 
-        # (Línea de documentación interna)
-        # (Corrección v2.0) Aplica las reglas recién cargadas
+        # 3. [FIX] Limpieza Profunda del Caché Visual
+        # Esto asegura que si abres el editor de reglas después de cargar,
+        # veas las reglas nuevas y no las antiguas que estaban en memoria.
+        _clear_rules_editor_cache()
+
+        # 4. Re-aplicar reglas al DataFrame actual (si existe)
         if st.session_state.df_staging is not None:
             df_staging_copy = st.session_state.df_staging.copy()
             st.session_state.df_staging = apply_priority_rules(df_staging_copy)
+            # Invalidar hashes para forzar repintado de la tabla principal
             st.session_state.current_data_hash = None
             st.session_state.editor_state = None
+            # Incrementar versión para refrescar el editor principal
+            if 'editor_key_ver' in st.session_state:
+                st.session_state.editor_key_ver += 1
         
     except Exception as e:
         st.error(f"Error al cargar configuración: {e}")
-        return False # Retorna Falso si falla
+        return False
     
-    return True # Retorna Verdadero si tiene éxito
+    return True
 
 
 def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en=None, todas_las_columnas_en=None):
     """
     Renderiza todo el contenido de la barra lateral.
-    (Documentación de args/returns omitida por brevedad)
     """
 
     # --- 1. Selector de Idioma ---
-    # (Sin cambios)
     lang_options = {"Español": "es", "English": "en"}
 
     def callback_update_language():
@@ -105,7 +107,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     st.sidebar.markdown(f"## {get_text(lang, 'control_area')}")
 
     # --- 2. Cargador de Archivos (Excel) ---
-    # (Sin cambios)
     uploader_label_es = get_text('es', 'uploader_label')
     uploader_label_en = get_text('en', 'uploader_label')
     static_uploader_label = f"{uploader_label_es} / {uploader_label_en}"
@@ -122,7 +123,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     if df_loaded:
 
         # --- 3a. Creación de Filtros ---
-        # (Sin cambios)
         st.sidebar.markdown(f"### {get_text(lang, 'add_filter_header')}")
         lista_columnas_ui = [""] + todas_las_columnas_ui
 
@@ -185,7 +185,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                 st.sidebar.warning(get_text(lang, 'warning_no_filter'))
 
         # --- 3b. Selector de Columnas Visibles ---
-        # (Sin cambios)
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### {get_text(lang, 'visible_cols_header')}")
 
@@ -214,7 +213,7 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
             on_change=callback_update_cols_from_multiselect
         )
 
-        # --- SECCIÓN GESTIÓN DE CONFIGURACIÓN (VISUAL) ---
+        # --- SECCIÓN GESTIÓN DE CONFIGURACIÓN ---
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### {get_text(lang, 'config_header')}")
         st.sidebar.caption(get_text(lang, 'config_help_text'))
@@ -241,63 +240,54 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
             use_container_width=True
         )
 
-
-        # --- [INICIO] CORRECCIÓN (v2.5) ---
-        # (Línea de documentación interna)
-        # Renderiza el widget. 'on_change' se ha eliminado.
+        # Widget de carga de configuración
         config_file = st.sidebar.file_uploader(
             label=get_text(lang, 'load_config_label'),
             type=["json"],
-            key="config_uploader", # La 'key' es usada para el estado del widget
+            key="config_uploader",
             accept_multiple_files=False
-            # on_change=... <-- LÍNEA ELIMINADA
         )
 
-        # (Línea de documentación interna)
-        # Nueva lógica de procesamiento manual que se ejecuta
-        # en cada 'rerun' pero solo procesa el archivo UNA VEZ.
         if config_file is not None:
-            # (Línea de documentación interna)
-            # Se ha cargado un archivo. Comprobamos si ya lo hemos procesado.
-            # Usamos la bandera (flag) 'config_file_processed'.
             if not st.session_state.config_file_processed:
-                # (Línea de documentación interna)
-                # Este es un archivo NUEVO (o el primero). Lo procesamos.
                 success = callback_process_config(config_file)
-                
                 if success:
-                    # (Línea de documentación interna)
-                    # Marcamos la bandera como "procesado".
                     st.session_state.config_file_processed = True
-                    
-                    # (Línea de documentación interna)
-                    # Forzamos un 'rerun' para que la app refleje
-                    # la nueva configuración.
                     st.rerun()
-        # --- [FIN] CORRECCIÓN (v2.5) ---
-        # El 'else' que reseteaba la bandera ha sido eliminado.
 
-
+        # Botón de Restablecer Todo
         if st.sidebar.button(get_text(lang, 'reset_config_button'), use_container_width=True):
+            # 1. Restablecer variables de UI
             st.session_state.filtros_activos = []
             st.session_state.columnas_visibles = todas_las_columnas_en
             st.session_state.priority_sort_order = None
             st.session_state.group_by_col_select = None
+            
+            # 2. [FIX] Restablecer Reglas a valores por defecto
+            st.session_state.priority_rules = get_default_rules()
+            st.session_state.audit_log = []
+            
+            # 3. [FIX] Limpiar caché del editor visual de reglas (Para que no se "peguen")
+            _clear_rules_editor_cache()
+            
             st.success(get_text(lang, 'reset_config_success'))
             
-            # --- [INICIO] CORRECCIÓN (v2.5) ---
-            # (Línea de documentación interna)
-            # Reseteamos la bandera explícitamente solo cuando
-            # el usuario presiona "Restablecer Todo".
+            # Resetear bandera de archivo
             st.session_state.config_file_processed = False
             if "config_uploader" in st.session_state:
                  del st.session_state.config_uploader
-            # --- [FIN] CORRECCIÓN (v2.5) ---
+            
+            # Recalcular DataFrame principal con reglas default
+            if st.session_state.df_staging is not None:
+                st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging.copy())
+                # Forzar repintado de tabla principal también
+                st.session_state.current_data_hash = None
+                if 'editor_key_ver' in st.session_state:
+                    st.session_state.editor_key_ver += 1
             
             st.rerun()
 
         # --- SECCIÓN LÓGICA DE NEGOCIO ---
-        # (Sin cambios)
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### {get_text(lang, 'rules_header')}")
 
@@ -309,7 +299,6 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
         )
         
         # --- SECCIÓN GESTIÓN DE LISTAS (AUTOCOMPLETADO) ---
-        # (Sin cambios)
         if st.session_state.get('autocomplete_options'):
             st.sidebar.markdown("---")
             with st.sidebar.expander(get_text(lang, 'manage_autocomplete_header'), expanded=False):
@@ -359,6 +348,4 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
                             st.success(get_text(lang, 'options_removed_success').format(n=len(opts_to_remove), col=col_ui_selected))
                             st.rerun()
 
-    # (Línea de documentación interna)
-    # Devuelve los archivos cargados al script principal 'app.py'
     return uploaded_files
