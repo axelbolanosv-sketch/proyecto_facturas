@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 from modules.translator import get_text
-# Solo importamos log_rule_changes, ya no necesitamos get_audit_log_excel aquí
 from modules.audit_service import log_rule_changes
 from modules.rules_service import apply_priority_rules, get_default_rules
 import uuid
@@ -27,10 +26,26 @@ def render_rules_editor(cols, auto_opts):
         }
     )
 
-    # Añadir regla
+    # Añadir regla CON ICONOS VISUALES
     with st.expander("Añadir Nueva Regla"):
-        c_type = st.selectbox("Columna", [""] + cols)
-        c_val = st.text_input("Valor (Contiene...)")
+        # 1. Preparar lista visual
+        cols_visual = []
+        for c in cols:
+            if c in auto_opts and auto_opts[c]:
+                cols_visual.append(f"{c} 📋")
+            else:
+                cols_visual.append(c)
+
+        c_type_visual = st.selectbox("Columna", [""] + cols_visual)
+        c_type = c_type_visual.replace(" 📋", "") # Limpiar
+        
+        # 2. Mostrar input adecuado
+        opts = auto_opts.get(c_type, [])
+        if opts:
+             c_val = st.selectbox("Valor (Contiene...)", opts)
+        else:
+             c_val = st.text_input("Valor (Contiene...)")
+             
         c_prio = st.selectbox("Asignar Prioridad", ["🚩 Maxima Prioridad", "Alta", "Media", "Minima"])
         c_reas = st.text_input("Razón (Explicación)")
         
@@ -39,7 +54,7 @@ def render_rules_editor(cols, auto_opts):
                 new_r = {
                     "id": uuid.uuid4().hex, 
                     "enabled": True, 
-                    "order": 100, # Default para usuario
+                    "order": 100, 
                     "type": c_type, 
                     "value": c_val, 
                     "priority": c_prio, 
@@ -63,7 +78,6 @@ def render_rules_editor(cols, auto_opts):
                 log_rule_changes(reason, st.session_state.rules_bkp, new_list)
                 st.session_state.priority_rules = new_list
                 
-                # Recalcular si hay datos
                 if st.session_state.df_staging is not None:
                     st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
                 

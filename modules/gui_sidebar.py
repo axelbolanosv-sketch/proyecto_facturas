@@ -14,48 +14,38 @@ def _clear_rules_editor_cache():
         if key in st.session_state: del st.session_state[key]
 
 def callback_process_config(file):
-    if file is None: return False
+    if not file: return False
     try:
-        conf = json.load(file)
+        d = json.load(file)
+        st.session_state.filtros_activos = d.get("filtros_activos", [])
+        st.session_state.columnas_visibles = d.get("columnas_visibles", st.session_state.columnas_visibles)
+        st.session_state.language = d.get("language", "es")
         
-        # Cargar configuraciones básicas
-        st.session_state.filtros_activos = conf.get("filtros_activos", [])
-        st.session_state.columnas_visibles = conf.get("columnas_visibles", st.session_state.columnas_visibles)
-        st.session_state.language = conf.get("language", st.session_state.language)
-        
-        # Protección del Usuario
-        usuario_cargado = conf.get("username", "")
-        if usuario_cargado:
-            st.session_state.username = usuario_cargado
+        usr = d.get("username", "")
+        if usr: st.session_state.username = usr
             
-        # Cargar Log y Reglas
-        st.session_state.audit_log = conf.get("audit_log", [])
-        st.session_state.priority_rules = conf.get("priority_rules", get_default_rules())
-        st.session_state.autocomplete_options = conf.get("autocomplete_options", st.session_state.get("autocomplete_options", {}))
-        
-        # Cargar Datos y ESTABLECER COMO NUEVO PUNTO ESTABLE
-        if "df_staging_data" in conf and conf["df_staging_data"]:
-            st.session_state.df_staging = pd.DataFrame.from_records(json.loads(conf["df_staging_data"]))
+        st.session_state.audit_log = d.get("audit_log", [])
+        st.session_state.priority_rules = d.get("priority_rules", get_default_rules())
+        st.session_state.autocomplete_options = d.get("autocomplete_options", st.session_state.get("autocomplete_options", {}))
+
+        if "df_staging_data" in d and d["df_staging_data"]:
+            st.session_state.df_staging = pd.DataFrame.from_records(json.loads(d["df_staging_data"]))
         elif st.session_state.df_staging is not None:
-            # Si solo se cargan reglas sobre datos existentes, recalcular
             st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging.copy())
 
-        # [FIX CRÍTICO]: Actualizar df_original para que sea igual al staging cargado.
-        # Esto evita que Ctrl+Z revierta a un estado anterior sin las reglas/banderas de la config.
         if st.session_state.df_staging is not None:
             st.session_state.df_original = st.session_state.df_staging.copy()
-
+        
         _clear_rules_editor_cache()
-        st.session_state.current_data_hash = None
         st.session_state.editor_state = None
+        st.session_state.current_data_hash = None
         if 'editor_key_ver' in st.session_state: st.session_state.editor_key_ver += 1
+        return True
     except Exception as e:
         st.error(f"Error config: {e}")
         return False
-    return True
 
-def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en=None, todas_las_columnas_en=None):
-    # --- SECCIÓN PERFIL Y LOG ---
+def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
     st.sidebar.markdown("### 👤 Perfil & Auditoría")
     
     if st.session_state.username is None: st.session_state.username = ""
@@ -65,17 +55,9 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
         st.sidebar.warning("Ingrese usuario para registrar acciones.")
     
     log_data = get_audit_log_excel()
-    st.sidebar.download_button(
-        label="📥 Descargar Log de Auditoría",
-        data=log_data,
-        file_name="log_auditoria_general.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        help="Descarga el historial completo de cambios (Excel)."
-    )
+    st.sidebar.download_button("📥 Descargar Log de Auditoría", data=log_data, file_name="log_auditoria_general.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     st.sidebar.markdown("---")
-
-    # --- IDIOMA ---
     opts = {"Español": "es", "English": "en"}
     def cb_lang(): st.session_state.language = opts[st.session_state.language_selector_key]
     curr = {v: k for k, v in opts.items()}.get(st.session_state.language, "Español")
@@ -85,44 +67,52 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
     up_files = st.sidebar.file_uploader("Cargar Excel / Upload Excel", type=["xlsx"], accept_multiple_files=True, on_change=clear_state_and_prepare_reload)
 
     if df_loaded:
-        # --- Filtros ---
+        # --- FILTROS ---
         st.sidebar.markdown(f"### {get_text(lang, 'add_filter_header')}")
-        col_sel = st.selectbox(get_text(lang, 'column_select'), [""] + todas_las_columnas_ui, key='filter_col_select')
-        col_en = col_map_es_to_en.get(col_sel, col_sel)
+        auto_opts = st.session_state.autocomplete_options
+        cols_visual = []
         
-        if col_en in st.session_state.autocomplete_options:
-            st.selectbox(get_text(lang, 'column_select_value'), [""] + sorted(st.session_state.autocomplete_options[col_en]), key='filter_val_select')
+        for col in cols_ui:
+            col_en = map_en.get(col, col)
+            if col_en in auto_opts and auto_opts[col_en]:
+                cols_visual.append(f"{col} 📋") 
+            else:
+                cols_visual.append(col)
+
+        col_sel_visual = st.selectbox(get_text(lang, 'column_select'), [""] + cols_visual, key='filter_col_select')
+        col_sel_clean = col_sel_visual.replace(" 📋", "")
+        col_en = map_en.get(col_sel_clean, col_sel_clean)
+        
+        available_opts = auto_opts.get(col_en, [])
+        if available_opts:
+            st.selectbox(get_text(lang, 'column_select_value'), [""] + sorted(available_opts), key='filter_val_select')
         else:
             st.text_input(get_text(lang, 'search_text'), key='filter_val_text')
 
         if st.button(get_text(lang, 'add_filter_button')):
-            val = st.session_state.filter_val_select if col_en in st.session_state.autocomplete_options else st.session_state.filter_val_text
-            if col_sel and val:
+            val = st.session_state.filter_val_select if available_opts else st.session_state.filter_val_text
+            if col_sel_clean and val:
                 st.session_state.filtros_activos.append({"columna": col_en, "valor": val})
                 st.rerun()
 
         # --- Columnas Visibles ---
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"### {get_text(lang, 'visible_cols_header')}")
-        if st.session_state.columnas_visibles is None: st.session_state.columnas_visibles = todas_las_columnas_en
+        if st.session_state.columnas_visibles is None: st.session_state.columnas_visibles = cols_en
+
+        def cb_toggle_cols():
+            if len(st.session_state.columnas_visibles) == len(cols_en): st.session_state.columnas_visibles = []
+            else: st.session_state.columnas_visibles = list(cols_en)
+            st.session_state.visible_cols_multiselect = [translate_column(lang, c) for c in st.session_state.columnas_visibles if translate_column(lang, c) in cols_ui]
+
+        st.sidebar.button(get_text(lang, 'visible_cols_toggle_button'), on_click=cb_toggle_cols)
 
         def cb_cols(): 
             selected_ui = st.session_state.visible_cols_multiselect
-            st.session_state.columnas_visibles = [c for c in todas_las_columnas_en if translate_column(lang, c) in selected_ui]
+            st.session_state.columnas_visibles = [c for c in cols_en if translate_column(lang, c) in selected_ui]
 
-        defaults_ui_validos = [
-            translate_column(lang, c) 
-            for c in st.session_state.columnas_visibles 
-            if translate_column(lang, c) in todas_las_columnas_ui
-        ]
-
-        st.sidebar.multiselect(
-            get_text(lang, 'visible_cols_select'),
-            options=todas_las_columnas_ui,
-            default=defaults_ui_validos,
-            key='visible_cols_multiselect',
-            on_change=cb_cols
-        )
+        defaults_ui_validos = [translate_column(lang, c) for c in st.session_state.columnas_visibles if translate_column(lang, c) in cols_ui]
+        st.sidebar.multiselect(get_text(lang, 'visible_cols_select'), options=cols_ui, default=defaults_ui_validos, key='visible_cols_multiselect', on_change=cb_cols)
 
         # --- Configuración ---
         st.sidebar.markdown("---")
@@ -161,8 +151,15 @@ def render_sidebar(lang, df_loaded, todas_las_columnas_ui=None, col_map_es_to_en
         if st.session_state.autocomplete_options:
             st.sidebar.markdown("---")
             with st.sidebar.expander("📋 Gestionar Listas", expanded=False):
-                col_list_ui = st.selectbox("Editar lista de:", sorted(todas_las_columnas_ui), key="sel_list_edit")
-                col_list_en = col_map_es_to_en.get(col_list_ui, col_list_ui)
+                # 1. Lista Visual
+                list_visual = []
+                for c in cols_ui:
+                    cen = map_en.get(c, c)
+                    if cen in auto_opts: list_visual.append(f"{c} 📋")
+                
+                col_list_visual = st.selectbox("Editar lista de:", sorted(list_visual), key="sel_list_edit")
+                col_list_clean = col_list_visual.replace(" 📋", "")
+                col_list_en = map_en.get(col_list_clean, col_list_clean)
                 
                 if col_list_en in st.session_state.autocomplete_options:
                     curr_opts = st.session_state.autocomplete_options[col_list_en]

@@ -1,4 +1,6 @@
 # modules/gui_views.py
+# VERSIÓN 6.1: VISUALIZACIÓN DE AUTOCOMPLETADO EN BULK EDIT
+
 import streamlit as st
 import pandas as pd
 import json
@@ -10,16 +12,38 @@ from modules.rules_service import apply_priority_rules
 from modules.audit_service import log_general_change
 import streamlit_hotkeys as hotkeys
 
-# --- 0. EDICIÓN MASIVA ---
+# --- 0. EDICIÓN MASIVA (Con Indicadores Visuales) ---
 @st.dialog("✏️ Edición Masiva / Bulk Edit")
 def modal_bulk_edit(indices_seleccionados: list, col_map_ui_to_en: dict, lang: str):
     st.markdown(f"Se editarán **{len(indices_seleccionados)}** facturas seleccionadas.")
-    cols_disponibles = [c for c in col_map_ui_to_en.keys() if "Seleccionar" not in c and "ID" not in c]
-    col_ui = st.selectbox("¿Qué columna desea editar?", cols_disponibles)
+
+    # 1. Preparar columnas con indicadores visuales
+    cols_raw = [c for c in col_map_ui_to_en.keys() if "Seleccionar" not in c and "ID" not in c]
+    cols_visual = []
+    auto_opts = st.session_state.autocomplete_options
+    
+    for c_ui in cols_raw:
+        c_en = col_map_ui_to_en.get(c_ui, c_ui)
+        if c_en in auto_opts and auto_opts[c_en]:
+            cols_visual.append(f"{c_ui} 📋")
+        else:
+            cols_visual.append(c_ui)
+
+    # 2. Selector visual
+    col_ui_visual = st.selectbox("¿Qué columna desea editar?", cols_visual)
+    
+    # 3. Limpiar nombre para lógica
+    col_ui = col_ui_visual.replace(" 📋", "")
     col_en = col_map_ui_to_en.get(col_ui, col_ui)
 
-    opts = st.session_state.autocomplete_options.get(col_en, [])
-    nuevo_valor = st.selectbox(f"Valor para '{col_ui}':", opts, index=None, placeholder="Seleccione...") if opts else st.text_input(f"Valor para '{col_ui}':")
+    # 4. Mostrar Input adecuado
+    opts = auto_opts.get(col_en, [])
+    nuevo_valor = None
+    
+    if opts:
+        nuevo_valor = st.selectbox(f"Valor para '{col_ui}':", opts, index=None, placeholder="Seleccione...")
+    else:
+        nuevo_valor = st.text_input(f"Valor para '{col_ui}':")
 
     st.warning("⚠️ Esta acción requiere 'Guardar Borrador' posteriormente para persistir cambios complejos.")
 
@@ -146,7 +170,7 @@ def render_detailed_view(lang: str, df_filtered: pd.DataFrame, df_master: pd.Dat
         st.session_state.editor_key_ver += 1
         st.rerun()
 
-    # --- CALLBACKS CON FLAG DE LOG ---
+    # Callbacks con logs
     def cb_add_row(do_log=True):
         idxs = pd.to_numeric(st.session_state.df_staging.index, errors='coerce').fillna(0)
         new_idx = int(idxs.max() + 1)
@@ -254,13 +278,11 @@ def render_detailed_view(lang: str, df_filtered: pd.DataFrame, df_master: pd.Dat
         st.markdown("---")
 
     c1, c2, c3, c4 = st.columns(4)
-    # Botones (Logs = True por defecto)
     c1.button(get_text(lang, 'add_row_button'), on_click=cb_add_row, use_container_width=True)
     c2.button(get_text(lang, 'save_changes_button'), on_click=cb_save_draft, type="primary", use_container_width=True)
     c3.button(get_text(lang, 'commit_changes_button'), on_click=cb_commit, use_container_width=True)
     c4.button(get_text(lang, 'reset_changes_button'), on_click=cb_revert, use_container_width=True)
 
-    # Hotkeys (Logs = False)
     if hotkeys.pressed("save_draft", key="hk_main"): cb_save_draft(do_log=False)
     if hotkeys.pressed("add_row", key="hk_main"): cb_add_row(do_log=False)
     if hotkeys.pressed("revert_stable", key="hk_main"): cb_revert(do_log=False)
@@ -268,7 +290,6 @@ def render_detailed_view(lang: str, df_filtered: pd.DataFrame, df_master: pd.Dat
     st.markdown("---")
     st.download_button("Descargar Excel (Filtrado)", to_excel(editor_val), "filtro.xlsx")
 
-# --- 4. VISTA AGRUPADA ---
 def render_grouped_view(lang: str, df: pd.DataFrame, col_map: dict, all_cols: list):
     st.markdown(f"## {get_text(lang, 'group_by_header')}")
     opts = [translate_column(lang, c) for c in ["Vendor Name", "Status", "Pay Group", "Priority"] if c in all_cols]
