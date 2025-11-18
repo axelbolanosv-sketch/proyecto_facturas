@@ -1,6 +1,4 @@
 # modules/gui_views.py
-# VERSIÓN 6.1: VISUALIZACIÓN DE AUTOCOMPLETADO EN BULK EDIT
-
 import streamlit as st
 import pandas as pd
 import json
@@ -12,12 +10,92 @@ from modules.rules_service import apply_priority_rules
 from modules.audit_service import log_general_change
 import streamlit_hotkeys as hotkeys
 
-# --- 0. EDICIÓN MASIVA (Con Indicadores Visuales) ---
+# --- MODAL BUSCAR Y REEMPLAZAR ---
+@st.dialog("🔍 Buscar y Reemplazar")
+def modal_find_replace(col_map, lang):
+    st.markdown("Esta herramienta buscará y reemplazará valores en **toda la columna** seleccionada (dataset completo).")
+    
+    # 1. Selector de Columna
+    cols_raw = [c for c in col_map.keys() if "Seleccionar" not in c]
+    # Indicadores visuales
+    cols_vis = []
+    auto_opts = st.session_state.autocomplete_options
+    for c in cols_raw:
+        cen = col_map.get(c, c)
+        cols_vis.append(f"{c} 📋" if cen in auto_opts and auto_opts[cen] else c)
+        
+    col_sel_vis = st.selectbox("Columna Objetivo", cols_vis)
+    col_sel_ui = col_sel_vis.replace(" 📋", "")
+    col_en = col_map.get(col_sel_ui, col_sel_ui)
+    
+    # 2. Inputs
+    col1, col2 = st.columns(2)
+    with col1:
+        find_txt = st.text_input("Buscar (Texto exacto o parcial):")
+    
+    with col2:
+        # Si tiene autocompletado, permitir elegir
+        opts = auto_opts.get(col_en, [])
+        if opts:
+            replace_val = st.selectbox("Reemplazar con:", [""] + opts)
+        else:
+            replace_val = st.text_input("Reemplazar con:")
+            
+    mode = st.radio("Modo:", ["Coincidencia Exacta", "Contiene (Parcial)"], horizontal=True)
+    
+    if st.button("🚀 Reemplazar Todo", type="primary"):
+        if not find_txt:
+            st.error("Escriba qué buscar.")
+        else:
+            df = st.session_state.df_staging.copy()
+            count = 0
+            
+            # Lógica de reemplazo
+            if col_en in df.columns:
+                mask = None
+                if mode == "Coincidencia Exacta":
+                    mask = (df[col_en].astype(str) == find_txt)
+                else:
+                    mask = (df[col_en].astype(str).str.contains(find_txt, case=False, na=False))
+                
+                count = mask.sum()
+                if count > 0:
+                    # Fix tipos numericos
+                    final_val = replace_val
+                    if pd.api.types.is_numeric_dtype(df[col_en].dtype):
+                        try: final_val = pd.to_numeric(replace_val)
+                        except: pass
+                    
+                    df.loc[mask, col_en] = final_val
+                    
+                    # Log y Guardar
+                    log_general_change("Find & Replace", "Bulk Replace", f"En '{col_en}': '{find_txt}' -> '{final_val}' ({count} filas)")
+                    st.session_state.df_staging = apply_priority_rules(df)
+                    
+                    # Update status
+                    col_stat = "Row Status"
+                    if col_stat in st.session_state.df_staging.columns:
+                        chk = st.session_state.df_staging.drop(columns=[col_stat, 'Priority_Reason'], errors='ignore').fillna("").astype(str)
+                        inc = (chk == "") | (chk == "0")
+                        st.session_state.df_staging[col_stat] = np.where(inc.any(axis=1), get_text(lang, 'status_incomplete'), get_text(lang, 'status_complete'))
+                    
+                    st.session_state.editor_state = None
+                    st.session_state.current_data_hash = None
+                    if 'editor_key_ver' in st.session_state: st.session_state.editor_key_ver += 1
+                    
+                    st.success(f"✅ Se actualizaron {count} filas.")
+                    st.rerun()
+                else:
+                    st.warning("No se encontraron coincidencias.")
+            else:
+                st.error("Columna no encontrada.")
+
+
+# --- 0. EDICIÓN MASIVA ---
 @st.dialog("✏️ Edición Masiva / Bulk Edit")
 def modal_bulk_edit(indices_seleccionados: list, col_map_ui_to_en: dict, lang: str):
     st.markdown(f"Se editarán **{len(indices_seleccionados)}** facturas seleccionadas.")
 
-    # 1. Preparar columnas con indicadores visuales
     cols_raw = [c for c in col_map_ui_to_en.keys() if "Seleccionar" not in c and "ID" not in c]
     cols_visual = []
     auto_opts = st.session_state.autocomplete_options
@@ -29,14 +107,10 @@ def modal_bulk_edit(indices_seleccionados: list, col_map_ui_to_en: dict, lang: s
         else:
             cols_visual.append(c_ui)
 
-    # 2. Selector visual
     col_ui_visual = st.selectbox("¿Qué columna desea editar?", cols_visual)
-    
-    # 3. Limpiar nombre para lógica
     col_ui = col_ui_visual.replace(" 📋", "")
     col_en = col_map_ui_to_en.get(col_ui, col_ui)
 
-    # 4. Mostrar Input adecuado
     opts = auto_opts.get(col_en, [])
     nuevo_valor = None
     
@@ -170,7 +244,6 @@ def render_detailed_view(lang: str, df_filtered: pd.DataFrame, df_master: pd.Dat
         st.session_state.editor_key_ver += 1
         st.rerun()
 
-    # Callbacks con logs
     def cb_add_row(do_log=True):
         idxs = pd.to_numeric(st.session_state.df_staging.index, errors='coerce').fillna(0)
         new_idx = int(idxs.max() + 1)
@@ -270,18 +343,21 @@ def render_detailed_view(lang: str, df_filtered: pd.DataFrame, df_master: pd.Dat
     
     if filas_sel:
         st.info(f"✅ {len(filas_sel)} filas seleccionadas.")
-        c_edit, c_del, _ = st.columns([0.2, 0.2, 0.6])
+        c_edit, c_del, c_find = st.columns([0.2, 0.2, 0.6])
         if c_edit.button(f"✏️ Editar {len(filas_sel)}"):
             modal_bulk_edit(filas_sel, col_map, lang)
         if c_del.button(f"🗑️ Borrar {len(filas_sel)}", type="primary"):
             cb_bulk_delete(filas_sel)
         st.markdown("---")
 
-    c1, c2, c3, c4 = st.columns(4)
+    # BOTONES GLOBALES
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.button(get_text(lang, 'add_row_button'), on_click=cb_add_row, use_container_width=True)
     c2.button(get_text(lang, 'save_changes_button'), on_click=cb_save_draft, type="primary", use_container_width=True)
     c3.button(get_text(lang, 'commit_changes_button'), on_click=cb_commit, use_container_width=True)
     c4.button(get_text(lang, 'reset_changes_button'), on_click=cb_revert, use_container_width=True)
+    if c5.button("🔍 Buscar/Reemplazar", use_container_width=True):
+        modal_find_replace(col_map, lang)
 
     if hotkeys.pressed("save_draft", key="hk_main"): cb_save_draft(do_log=False)
     if hotkeys.pressed("add_row", key="hk_main"): cb_add_row(do_log=False)

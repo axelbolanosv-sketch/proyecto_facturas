@@ -147,34 +147,59 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
         st.sidebar.markdown("---")
         st.sidebar.button(get_text(lang, 'rules_edit_button'), on_click=_callback_open_rules_editor)
 
-        # --- Gestor de Listas ---
-        if st.session_state.autocomplete_options:
-            st.sidebar.markdown("---")
-            with st.sidebar.expander("📋 Gestionar Listas", expanded=False):
-                # 1. Lista Visual
-                list_visual = []
-                for c in cols_ui:
-                    cen = map_en.get(c, c)
-                    if cen in auto_opts: list_visual.append(f"{c} 📋")
+        # --- GESTOR DE LISTAS Y ANALIZADOR ---
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("📋 Gestionar Listas / Analizar", expanded=False):
+            # 1. Lista completa para que el usuario pueda elegir CUALQUIERA
+            # Marcamos con icono las que ya tienen opciones
+            list_visual_all = []
+            for c in cols_ui:
+                cen = map_en.get(c, c)
+                if cen in auto_opts and auto_opts[cen]: 
+                    list_visual_all.append(f"{c} 📋")
+                else:
+                    list_visual_all.append(c)
+            
+            col_list_visual = st.selectbox("Seleccionar Columna:", sorted(list_visual_all), key="sel_list_edit")
+            col_list_clean = col_list_visual.replace(" 📋", "")
+            col_list_en = map_en.get(col_list_clean, col_list_clean)
+            
+            # 2. Lógica condicional
+            if col_list_en in st.session_state.autocomplete_options and st.session_state.autocomplete_options[col_list_en]:
+                # CASO A: YA TIENE LISTA
+                curr_opts = st.session_state.autocomplete_options[col_list_en]
+                st.success(f"✅ Autocompletado activo ({len(curr_opts)} opciones).")
                 
-                col_list_visual = st.selectbox("Editar lista de:", sorted(list_visual), key="sel_list_edit")
-                col_list_clean = col_list_visual.replace(" 📋", "")
-                col_list_en = map_en.get(col_list_clean, col_list_clean)
-                
-                if col_list_en in st.session_state.autocomplete_options:
-                    curr_opts = st.session_state.autocomplete_options[col_list_en]
-                    st.write(f"**{len(curr_opts)} opciones.**")
-                    
-                    new_op = st.text_input("Nueva opción:", key="new_op_txt")
-                    if st.button("➕ Añadir"):
-                        if new_op and new_op not in curr_opts:
-                            curr_opts.append(new_op)
-                            st.session_state.autocomplete_options[col_list_en] = sorted(curr_opts)
-                            st.rerun()
-                    
-                    del_ops = st.multiselect("Borrar opciones:", curr_opts, key="del_ops_mul")
-                    if st.button("🗑️ Borrar Seleccionados"):
-                        st.session_state.autocomplete_options[col_list_en] = [x for x in curr_opts if x not in del_ops]
+                new_op = st.text_input("Nueva opción:", key="new_op_txt")
+                if st.button("➕ Añadir"):
+                    if new_op and new_op not in curr_opts:
+                        curr_opts.append(new_op)
+                        st.session_state.autocomplete_options[col_list_en] = sorted(curr_opts)
                         st.rerun()
+                
+                del_ops = st.multiselect("Borrar opciones:", curr_opts, key="del_ops_mul")
+                if st.button("🗑️ Borrar Seleccionados"):
+                    st.session_state.autocomplete_options[col_list_en] = [x for x in curr_opts if x not in del_ops]
+                    st.rerun()
+            else:
+                # CASO B: NO TIENE LISTA -> OFRECER ANÁLISIS
+                st.warning("⚠️ Esta columna NO tiene lista de valores guardada.")
+                st.info("Puede analizar la columna para extraer todos los valores únicos actuales y convertirlos en una lista desplegable.")
+                
+                if st.button("🔄 Analizar Valores Únicos"):
+                    if st.session_state.df_staging is not None and col_list_en in st.session_state.df_staging.columns:
+                        try:
+                            # Extraer únicos, convertir a string y ordenar
+                            unique_vals = st.session_state.df_staging[col_list_en].fillna("").astype(str).unique().tolist()
+                            unique_vals = sorted([x for x in unique_vals if x.strip() != ""])
+                            
+                            if unique_vals:
+                                st.session_state.autocomplete_options[col_list_en] = unique_vals
+                                st.success(f"¡Análisis completo! {len(unique_vals)} opciones encontradas.")
+                                st.rerun()
+                            else:
+                                st.warning("La columna está vacía.")
+                        except Exception as e:
+                            st.error(f"Error al analizar: {e}")
 
     return up_files
