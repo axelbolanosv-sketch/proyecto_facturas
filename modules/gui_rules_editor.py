@@ -8,26 +8,26 @@ from modules.rules_service import apply_priority_rules, get_default_rules
 
 def _get_operator_labels(lang: str) -> dict:
     """
-    Devuelve un diccionario con las etiquetas descriptivas de los operadores
-    según el idioma seleccionado. Incluye explicación de funcionamiento.
+    Devuelve las etiquetas descriptivas de los operadores.
+    Muestra el símbolo y una explicación para que el usuario no se pierda.
     """
     if lang == "en":
         return {
-            "contains": "🔍 Contains (Partial) | Finds text inside cell (e.g. 'Apple' in 'Apple Inc')",
-            "is": "🟰 Is equal to (Exact) | Full match (Case insensitive)",
-            "is_not": "🚫 Is not equal to | Everything except this value",
-            "starts_with": "🔤 Starts with | Cell starts with this text",
-            ">": "📈 Greater than (>) | Mathematical comparison (Numbers)",
-            "<": "📉 Less than (<) | Mathematical comparison (Numbers)",
-            ">=": "📐 Greater or equal (>=) | Mathematical comparison",
-            "<=": "📏 Less or equal (<=) | Mathematical comparison"
+            "contains": "🔍 Contains | Partial match (e.g. 'Apple' in 'Apple Inc')",
+            "is": "🟰 Is equal to | Exact match",
+            "is_not": "🚫 Is not equal to | Everything except this",
+            "starts_with": "🔤 Starts with | Text starting with...",
+            ">": "📈 Greater than (>) | Number is strictly higher",
+            "<": "📉 Less than (<) | Number is strictly lower",
+            ">=": "📐 Greater or equal (>=) | Number is higher or equal",
+            "<=": "📏 Less or equal (<=) | Number is lower or equal"
         }
-    else: # Default to Spanish
+    else: # Default Español
         return {
-            "contains": "🔍 Contiene (Parcial) | Busca el texto dentro (Ej. 'Sol' en 'Girasol')",
-            "is": "🟰 Es igual a (Exacto) | Coincidencia completa (No distingue Mayús/Minús)",
-            "is_not": "🚫 No es igual a | Todo lo que NO sea este valor",
-            "starts_with": "🔤 Empieza con | La celda inicia con este texto",
+            "contains": "🔍 Contiene | Búsqueda parcial (Ej. 'Sol' en 'Girasol')",
+            "is": "🟰 Es igual a | Coincidencia exacta",
+            "is_not": "🚫 No es igual a | Todo menos este valor",
+            "starts_with": "🔤 Empieza con | El texto inicia con...",
             ">": "📈 Mayor que (>) | Comparación numérica",
             "<": "📉 Menor que (<) | Comparación numérica",
             ">=": "📐 Mayor o igual (>=) | Comparación numérica",
@@ -35,7 +35,7 @@ def _get_operator_labels(lang: str) -> dict:
         }
 
 def _reset_builder_state():
-    """Reinicia las variables temporales del constructor de reglas."""
+    """Reinicia el constructor."""
     st.session_state.new_rule_conditions = []
     st.session_state.new_rule_name = ""
     st.session_state.new_rule_priority = "Alta"
@@ -44,101 +44,133 @@ def _reset_builder_state():
 @st.dialog("Editor de Reglas de Negocio", width="large")
 def render_rules_editor(cols, auto_opts):
     """
-    Interfaz gráfica para crear y gestionar reglas complejas.
-    Divide la pantalla en 'Constructor' (Izquierda) y 'Lista' (Derecha).
+    Renderiza el editor con 'Entradas Inteligentes' que cambian de formato
+    según el operador seleccionado.
     """
-    # Inicialización de estado local si no existe
     if "new_rule_conditions" not in st.session_state:
         _reset_builder_state()
         
     if "priority_rules" not in st.session_state:
         st.session_state.priority_rules = get_default_rules()
         
-    # Backup para auditoría
     rules_bkp = copy.deepcopy(st.session_state.priority_rules)
     lang = st.session_state.get('language', 'es')
 
     st.markdown("### 🛠️ Constructor de Reglas")
-    st.info("Cree reglas combinando condiciones. Una regla se aplica solo si **TODAS** sus condiciones se cumplen (Lógica Y).")
+    st.info("Defina reglas lógicas. El sistema detectará automáticamente si necesita ingresar un número o texto.")
 
-    # --- LAYOUT: DOS COLUMNAS ---
     col_builder, col_list = st.columns([0.45, 0.55], gap="large")
 
-    # =============================
-    # COLUMNA IZQUIERDA: CONSTRUCTOR
-    # =============================
+    # --- IZQUIERDA: CONSTRUCTOR ---
     with col_builder:
-        st.markdown("#### 1. Definición")
+        st.markdown("#### 1. Definición de la Regla")
         
-        # A. Datos de la Regla
-        r_name = st.text_input("Nombre/Razón", value=st.session_state.new_rule_name, placeholder="Ej. Facturas Proveedor ACME > 10k")
+        r_name = st.text_input("Nombre (Razón)", value=st.session_state.new_rule_name, placeholder="Ej. Facturas > 10k")
         st.session_state.new_rule_name = r_name
         
         c1, c2 = st.columns(2)
-        r_prio = c1.selectbox("Prioridad a Asignar", ["🚩 Maxima Prioridad", "Alta", "Media", "Minima"], index=1)
-        r_order = c2.number_input("Orden", min_value=1, value=50, help="Reglas con número mayor se ejecutan después y pueden sobrescribir a las anteriores.")
+        r_prio = c1.selectbox("Prioridad", ["🚩 Maxima Prioridad", "Alta", "Media", "Minima"], index=1)
+        r_order = c2.number_input("Orden", min_value=1, value=50, help="Mayor número = Se ejecuta al final.")
         
-        st.markdown("#### 2. Condiciones")
+        st.markdown("#### 2. Agregar Condiciones")
         
-        # B. Selector de Condiciones
-        # Filtramos columnas técnicas que no deberían usarse en reglas
+        # -- Selección de Columna --
         ignore_cols = ['Seleccionar', 'Priority', 'Priority_Reason', 'Row Status']
         cols_valid = [c for c in cols if c not in ignore_cols]
-        
         cond_col = st.selectbox("Columna", cols_valid, key="builder_col")
         
-        # B.1 Selector de Operador con Descripciones Dinámicas
+        # -- Selección de Operador (Con descripciones bonitas) --
         op_labels = _get_operator_labels(lang)
-        op_keys = list(op_labels.keys())
-        
         cond_op = st.selectbox(
             "Operador", 
-            options=op_keys, 
-            format_func=lambda x: op_labels.get(x, x), # Muestra el texto bonito
+            options=list(op_labels.keys()), 
+            format_func=lambda x: op_labels.get(x, x),
             key="builder_op"
         )
         
-        # B.2 Input de Valor (Dinámico)
-        # Si la columna tiene autocompletado y NO es una operación matemática, mostrar selectbox
-        current_opts = auto_opts.get(cond_col, [])
-        if current_opts and cond_op not in [">", "<", ">=", "<="]:
-            cond_val = st.selectbox("Valor", current_opts, key="builder_val_sel")
+        # -- INPUT DE VALOR INTELIGENTE (Aquí está el cambio clave) --
+        # Detectamos si es una operación matemática
+        is_math_op = cond_op in [">", "<", ">=", "<="]
+        
+        cond_val = None
+        
+        if is_math_op:
+            # CASO 1: Operador Matemático -> Mostramos Input Numérico
+            # Esto "autorellena" el formato (0.00) y evita errores de texto.
+            st.caption("🔢 Ingrese el valor numérico:")
+            cond_val = st.number_input(
+                "Valor Numérico", 
+                value=0.0, 
+                format="%.2f",  # Formato visual bonito (ej. 1500.00)
+                label_visibility="collapsed",
+                help="Escriba solo el número. El sistema se encarga de la comparación matemática.",
+                key="builder_val_num"
+            )
         else:
-            cond_val = st.text_input("Valor", key="builder_val_txt")
+            # CASO 2: Operador de Texto -> Mostramos Select o Texto con Placeholder
+            current_opts = auto_opts.get(cond_col, [])
+            
+            if current_opts:
+                # Si hay lista de opciones (ej. Proveedores), usamos Selectbox
+                st.caption("📋 Seleccione de la lista:")
+                cond_val = st.selectbox(
+                    "Valor", 
+                    current_opts, 
+                    label_visibility="collapsed", 
+                    key="builder_val_sel"
+                )
+            else:
+                # Si es texto libre, usamos placeholder dinámico para guiar
+                ph_map = {
+                    "contains": "Ej. 'Servicios' (Buscará texto parcial)",
+                    "starts_with": "Ej. 'INV-' (Debe empezar así)",
+                    "is": "Ej. Valor exacto"
+                }
+                placeholder_txt = ph_map.get(cond_op, "Escriba el valor...")
+                
+                st.caption("✍️ Escriba el texto:")
+                cond_val = st.text_input(
+                    "Valor Texto", 
+                    placeholder=placeholder_txt,
+                    label_visibility="collapsed",
+                    key="builder_val_txt"
+                )
 
-        # Botón añadir condición temporal
+        # Botón para añadir la condición al borrador
         if st.button("➕ Agregar Condición", use_container_width=True):
-            if str(cond_val).strip():
+            # Validar que no esté vacío (el 0.0 en numérico cuenta como valor, así que chequeamos string si no es numérico)
+            valid = True
+            if not is_math_op and not str(cond_val).strip():
+                valid = False
+                
+            if valid:
                 st.session_state.new_rule_conditions.append({
                     "column": cond_col,
                     "operator": cond_op,
                     "value": cond_val
                 })
             else:
-                st.warning("El valor no puede estar vacío.")
+                st.warning("Ingrese un valor válido.")
 
-        # C. Visualización de Condiciones Pendientes
+        # Lista de condiciones pendientes
         if st.session_state.new_rule_conditions:
             st.divider()
-            st.caption("Condiciones Agregadas:")
-            
+            st.markdown("**Condiciones (Y):**")
             for i, cond in enumerate(st.session_state.new_rule_conditions):
-                # Mostrar operador traducido en la lista también
-                op_display = op_labels.get(cond['operator'], cond['operator']).split("|")[0].strip() # Solo la parte corta
+                # Mostrar de forma legible
+                op_nice = op_labels.get(cond['operator'], cond['operator']).split("|")[0].strip()
+                val_disp = f"{cond['value']:.2f}" if isinstance(cond['value'], float) else f"'{cond['value']}'"
                 
-                col_txt, col_del = st.columns([0.85, 0.15])
-                col_txt.markdown(f"**{i+1}.** `{cond['column']}` {op_display} `{cond['value']}`")
-                if col_del.button("❌", key=f"del_cond_{i}"):
+                c_txt, c_del = st.columns([0.85, 0.15])
+                c_txt.markdown(f"`{cond['column']}` {op_nice} {val_disp}")
+                if c_del.button("❌", key=f"del_{i}"):
                     st.session_state.new_rule_conditions.pop(i)
                     st.rerun()
             
-            st.divider()
-            # Botón Guardar Final
-            if st.button("💾 Guardar Regla Completa", type="primary", use_container_width=True):
+            if st.button("💾 Guardar Regla", type="primary", use_container_width=True):
                 if not r_name:
-                    st.error("Debe asignar un nombre o razón a la regla.")
+                    st.error("Falta el nombre de la regla.")
                 else:
-                    # Construir objeto final
                     new_rule = {
                         "id": uuid.uuid4().hex,
                         "enabled": True,
@@ -147,69 +179,47 @@ def render_rules_editor(cols, auto_opts):
                         "reason": r_name,
                         "conditions": copy.deepcopy(st.session_state.new_rule_conditions)
                     }
-                    # Persistir
                     st.session_state.priority_rules.append(new_rule)
-                    
-                    # Log y Recálculo
                     log_rule_changes(f"Crear: {r_name}", rules_bkp, st.session_state.priority_rules)
                     if st.session_state.df_staging is not None:
                         st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
                     
-                    st.success("Regla guardada correctamente.")
+                    st.success("¡Guardada!")
                     _reset_builder_state()
                     st.rerun()
 
-    # =============================
-    # COLUMNA DERECHA: LISTA REGLAS
-    # =============================
+    # --- DERECHA: LISTA DE REGLAS ---
     with col_list:
-        st.markdown("#### 📋 Reglas Existentes")
-        
-        # Ordenar para visualización (por orden de ejecución)
+        st.markdown("#### 📋 Reglas Activas")
         display_rules = sorted(st.session_state.priority_rules, key=lambda x: x.get('order', 0))
         
-        if not display_rules:
-            st.info("No hay reglas configuradas actualmente.")
+        if not display_rules: st.info("Sin reglas.")
         
         for i, rule in enumerate(display_rules):
-            # Iconografía de estado
-            is_on = rule.get('enabled', True)
-            icon = "🟢" if is_on else "⚪"
-            
-            # Título del Expander
+            icon = "🟢" if rule.get('enabled', True) else "⚪"
             title = f"{icon} [{rule.get('order')}] {rule.get('reason', 'Sin Nombre')}"
             
             with st.expander(title, expanded=False):
-                c_desc, c_btn = st.columns([0.7, 0.3])
+                st.markdown(f"**Prioridad:** `{rule.get('priority')}`")
+                st.caption("Condiciones:")
+                for c in rule.get('conditions', []):
+                    op_nice = op_labels.get(c['operator'], c['operator']).split("|")[0].strip()
+                    st.text(f"- {c['column']} {op_nice} {c['value']}")
                 
-                with c_desc:
-                    st.markdown(f"**Prioridad:** `{rule.get('priority')}`")
-                    st.caption("Condiciones:")
-                    for c in rule.get('conditions', []):
-                        # Traducir operador para lectura fácil
-                        op_nice = op_labels.get(c['operator'], c['operator']).split("|")[0].strip()
-                        st.text(f"- {c['column']} {op_nice} {c['value']}")
-
-                with c_btn:
-                    # Botón Activar/Desactivar
-                    lbl_tog = "Desactivar" if is_on else "Activar"
-                    if st.button(lbl_tog, key=f"tog_{rule['id']}", use_container_width=True):
-                        rule['enabled'] = not is_on
-                        log_rule_changes(f"Toggle: {rule['reason']}", rules_bkp, st.session_state.priority_rules)
-                        if st.session_state.df_staging is not None:
-                            st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
-                        st.rerun()
-                    
-                    # Botón Eliminar
-                    if st.button("🗑️ Eliminar", key=f"del_{rule['id']}", use_container_width=True):
-                        st.session_state.priority_rules.pop(i) # i es seguro porque iteramos sobre lista ordenada/filtrada igual al state? Cuidado: 
-                        # Mejor buscar por ID para evitar errores de índice si el sort cambia
-                        st.session_state.priority_rules = [r for r in st.session_state.priority_rules if r['id'] != rule['id']]
-                        
-                        log_rule_changes(f"Borrar: {rule['reason']}", rules_bkp, st.session_state.priority_rules)
-                        if st.session_state.df_staging is not None:
-                            st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
-                        st.rerun()
+                c_act, c_del = st.columns(2)
+                if c_act.button("Activar/Desactivar", key=f"tg_{rule['id']}"):
+                    rule['enabled'] = not rule.get('enabled', True)
+                    log_rule_changes(f"Toggle: {rule['reason']}", rules_bkp, st.session_state.priority_rules)
+                    if st.session_state.df_staging is not None:
+                        st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
+                    st.rerun()
+                
+                if c_del.button("Eliminar", key=f"dl_{rule['id']}"):
+                    st.session_state.priority_rules = [r for r in st.session_state.priority_rules if r['id'] != rule['id']]
+                    log_rule_changes(f"Borrar: {rule['reason']}", rules_bkp, st.session_state.priority_rules)
+                    if st.session_state.df_staging is not None:
+                        st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
+                    st.rerun()
 
     st.divider()
     if st.button("Cerrar Editor", use_container_width=True):
