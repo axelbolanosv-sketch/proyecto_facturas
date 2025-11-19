@@ -1,7 +1,7 @@
 # modules/rules_service.py
 """
-Motor de reglas de negocio.
-Nota: La lógica de auditoría se ha movido a modules/audit_service.py
+Motor de reglas de negocio (Versión 2.0 - Multi-condición).
+Permite reglas complejas con múltiples condiciones y operadores lógicos.
 """
 
 import streamlit as st
@@ -9,72 +9,158 @@ import pandas as pd
 import numpy as np
 
 def get_default_rules():
-    """Define las reglas por defecto."""
+    """
+    Define las reglas por defecto con la nueva estructura de condiciones.
+    Returns:
+        list: Lista de diccionarios con la configuración de reglas.
+    """
     return [
-        {"id": "rule_001", "enabled": True, "order": 20, "type": "Pay Group", "value": "DIST", "priority": "🚩 Maxima Prioridad", "reason": "Regla Sistema: PayGroup DIST"},
-        {"id": "rule_002", "enabled": True, "order": 20, "type": "Pay Group", "value": "INTERCOMPANY", "priority": "🚩 Maxima Prioridad", "reason": "Regla Sistema: PayGroup INTERCOMPANY"},
-        {"id": "rule_003", "enabled": True, "order": 20, "type": "Pay Group", "value": "PAYROLL", "priority": "🚩 Maxima Prioridad", "reason": "Regla Sistema: PayGroup PAYROLL"},
-        {"id": "rule_004", "enabled": True, "order": 20, "type": "Pay Group", "value": "RENTS", "priority": "🚩 Maxima Prioridad", "reason": "Regla Sistema: PayGroup RENTS"},
-        {"id": "rule_005", "enabled": True, "order": 20, "type": "Pay Group", "value": "SCF", "priority": "🚩 Maxima Prioridad", "reason": "Regla Sistema: PayGroup SCF"},
-        {"id": "rule_006", "enabled": True, "order": 30, "type": "Pay Group", "value": "PAYGROUP", "priority": "Minima", "reason": "Regla Sistema: PayGroup PAYGROUP (Baja)"},
-        {"id": "rule_007", "enabled": True, "order": 30, "type": "Pay Group", "value": "GNTD", "priority": "Minima", "reason": "Regla Sistema: PayGroup GNTD (Baja)"}
+        {
+            "id": "rule_sys_001",
+            "enabled": True,
+            "order": 10,
+            "priority": "🚩 Maxima Prioridad",
+            "reason": "Sistema: Pay Group Crítico",
+            "conditions": [
+                {"column": "Pay Group", "operator": "is", "value": "DIST"}
+            ]
+        },
+        {
+            "id": "rule_sys_002",
+            "enabled": True,
+            "order": 20,
+            "priority": "Alta",
+            "reason": "Sistema: Monto Alto (> 10k)",
+            "conditions": [
+                {"column": "Total", "operator": ">", "value": 10000}
+            ]
+        }
     ]
+
+def _evaluate_condition(df: pd.DataFrame, condition: dict) -> pd.Series:
+    """
+    Evalúa una sola condición contra el DataFrame de forma vectorizada.
+    
+    Args:
+        df (pd.DataFrame): DataFrame a evaluar.
+        condition (dict): Diccionario con keys 'column', 'operator', 'value'.
+        
+    Returns:
+        pd.Series: Serie booleana (True donde se cumple la condición).
+    """
+    col = condition.get("column")
+    op = condition.get("operator")
+    val = condition.get("value")
+
+    if col not in df.columns:
+        return pd.Series(False, index=df.index)
+
+    # Normalización de la columna base
+    series = df[col]
+    
+    # --- Lógica Numérica (Operadores Matemáticos) ---
+    if op in [">", "<", ">=", "<="]:
+        # Convertir columna a número forzosamente, errores a 0
+        series_numeric = pd.to_numeric(series, errors='coerce').fillna(0)
+        try:
+            val_numeric = float(val)
+        except (ValueError, TypeError):
+            val_numeric = 0.0
+            
+        if op == ">": return series_numeric > val_numeric
+        if op == "<": return series_numeric < val_numeric
+        if op == ">=": return series_numeric >= val_numeric
+        if op == "<=": return series_numeric <= val_numeric
+
+    # --- Lógica de Texto (Operadores de String) ---
+    # Convertir todo a string para evitar errores de tipo
+    series_str = series.fillna("").astype(str)
+    val_str = str(val)
+
+    if op == "contains":
+        return series_str.str.contains(val_str, case=False, na=False)
+    elif op == "is":
+        # Comparación exacta insensible a mayúsculas
+        return series_str.str.lower() == val_str.lower()
+    elif op == "is_not":
+        return series_str.str.lower() != val_str.lower()
+    elif op == "starts_with":
+        return series_str.str.lower().str.startswith(val_str.lower())
+    
+    return pd.Series(False, index=df.index)
 
 def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Aplica el motor de reglas.
-    IMPORTANTE: Elimina columnas temporales para evitar ensuciar el DataFrame final.
+    Aplica el motor de reglas multi-condición al DataFrame.
+    
+    Args:
+        df (pd.DataFrame): DataFrame de entrada.
+        
+    Returns:
+        pd.DataFrame: DataFrame con las columnas 'Priority' y 'Priority_Reason' actualizadas.
     """
     if 'Priority' not in df.columns:
         return df
 
-    # 1. Obtener reglas
+    # 1. Obtener reglas del estado o cargar defaults
     rules = st.session_state.get('priority_rules')
-    if rules is None:
+    if not rules or not isinstance(rules, list):
         rules = get_default_rules()
         st.session_state.priority_rules = rules
         
-    # Ordenar: menor número primero (ej. 10), luego mayores (ej. 100).
-    # reverse=False asegura que el 100 (regla usuario) se ejecute AL FINAL y sobrescriba al 30.
+    # Ordenar por campo 'order': menor número se ejecuta primero.
     active_rules = sorted(
-        [r for r in rules if r.get('enabled', False)],
-        key=lambda x: x.get('order', 99),
-        reverse=False 
+        [r for r in rules if r.get('enabled', True)],
+        key=lambda x: x.get('order', 99)
     )
     
-    # 2. Columnas temporales
-    df.loc[:, 'Priority_Calculated'] = "Sin Regla Asignada"
-    df.loc[:, 'Priority_Reason'] = "Sin Regla Asignada"
+    # 2. Inicializar columnas temporales de cálculo
+    # Se usa asignación directa para asegurar consistencia
+    df['Priority_Calculated'] = "Sin Regla Asignada"
+    df['Priority_Reason'] = "Sin Regla Asignada"
     
-    # 3. Aplicar Reglas
+    # 3. Procesar cada regla
     for rule in active_rules:
-        r_type = rule.get('type')
-        r_val = rule.get('value')
-        r_prio = rule.get('priority')
-        r_reason = rule.get('reason', f"Regla: {r_type} contiene {r_val}")
-
-        if not all([r_type, r_val, r_prio]): continue
-
+        conditions = rule.get('conditions', [])
+        if not conditions:
+            continue
+            
         try:
-            if r_type in df.columns:
-                mask = df[r_type].fillna("").astype(str).str.contains(r_val, case=False, na=False)
-                df.loc[mask, 'Priority_Calculated'] = r_prio
-                df.loc[mask, 'Priority_Reason'] = r_reason
-        except Exception:
-            pass
+            # Comenzar con una máscara donde TODO es True (para lógica AND)
+            final_mask = pd.Series(True, index=df.index)
+            
+            # Intersección de máscaras (AND)
+            for cond in conditions:
+                cond_mask = _evaluate_condition(df, cond)
+                final_mask = final_mask & cond_mask
+            
+            # Aplicar cambios si hay coincidencias
+            if final_mask.any():
+                r_prio = rule.get('priority', 'Media')
+                r_reason = rule.get('reason', 'Regla Personalizada')
+                
+                df.loc[final_mask, 'Priority_Calculated'] = r_prio
+                df.loc[final_mask, 'Priority_Reason'] = r_reason
+                
+        except Exception as e:
+            print(f"Error aplicando regla {rule.get('id')}: {e}")
+            continue
 
-    # 4. Preservar ingresos manuales si no hubo regla
-    manual_priorities = ["Minima", "Media", "Alta", "Baja Prioridad", "Low", "Medium", "High", "Zero"]
-    mask_manual = df['Priority'].isin(manual_priorities)
-    mask_no_rule = (df['Priority_Reason'] == "Sin Regla Asignada")
+    # 4. Preservar ingresos manuales (Override del Usuario)
+    # Si el motor NO asignó regla, pero el usuario tenía un valor manual válido, restaurarlo.
+    # Esto permite que la edición manual "gane" a menos que una regla explícita la sobrescriba después.
+    manual_priorities = ["Minima", "Media", "Alta", "🚩 Maxima Prioridad"]
     
-    mask_keep_manual = mask_manual & mask_no_rule
-    df.loc[mask_keep_manual, 'Priority_Calculated'] = df['Priority']
-    df.loc[mask_keep_manual, 'Priority_Reason'] = "Ingreso Manual"
+    mask_no_rule_applied = (df['Priority_Reason'] == "Sin Regla Asignada")
+    mask_had_manual_value = df['Priority'].isin(manual_priorities) & (df['Priority'] != "")
     
-    # 5. Finalizar
-    df.loc[:, 'Priority'] = df['Priority_Calculated']
+    mask_restore_manual = mask_no_rule_applied & mask_had_manual_value
     
-    # IMPORTANTE: Eliminar la columna temporal 'Priority_Calculated' 
-    # para que no aparezca en el selector de columnas y cause errores.
+    if mask_restore_manual.any():
+        df.loc[mask_restore_manual, 'Priority_Calculated'] = df.loc[mask_restore_manual, 'Priority']
+        df.loc[mask_restore_manual, 'Priority_Reason'] = "Ingreso Manual"
+    
+    # 5. Finalizar y limpiar
+    df['Priority'] = df['Priority_Calculated']
+    
     return df.drop(columns=['Priority_Calculated'], errors='ignore')
