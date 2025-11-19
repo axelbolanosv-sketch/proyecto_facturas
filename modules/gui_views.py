@@ -1,4 +1,8 @@
 # modules/gui_views.py
+# VERSIÓN 8.0: BUSCAR Y REEMPLAZAR CON FILTROS AVANZADOS
+# - Se añade sección de filtros opcionales en el modal de Buscar y Reemplazar.
+# - Permite restringir el reemplazo basándose en valores de otras columnas.
+
 import streamlit as st
 import pandas as pd
 import json
@@ -10,69 +14,131 @@ from modules.rules_service import apply_priority_rules
 from modules.audit_service import log_general_change
 import streamlit_hotkeys as hotkeys
 
-# --- MODAL BUSCAR Y REEMPLAZAR ---
+# --- MODAL BUSCAR Y REEMPLAZAR (MEJORADO) ---
 @st.dialog("🔍 Buscar y Reemplazar")
 def modal_find_replace(col_map, lang):
-    st.markdown("Esta herramienta buscará y reemplazará valores en **toda la columna** seleccionada (dataset completo).")
+    st.markdown("Esta herramienta buscará y reemplazará valores en la **Columna Objetivo**.")
     
-    # 1. Selector de Columna
+    # 1. Preparar listas visuales
     cols_raw = [c for c in col_map.keys() if "Seleccionar" not in c]
-    # Indicadores visuales
     cols_vis = []
     auto_opts = st.session_state.autocomplete_options
+    
     for c in cols_raw:
         cen = col_map.get(c, c)
         cols_vis.append(f"{c} 📋" if cen in auto_opts and auto_opts[cen] else c)
         
-    col_sel_vis = st.selectbox("Columna Objetivo", cols_vis)
+    # 2. Selector de Columna Objetivo
+    col_sel_vis = st.selectbox("Columna Objetivo (Donde se hará el cambio):", cols_vis)
     col_sel_ui = col_sel_vis.replace(" 📋", "")
     col_en = col_map.get(col_sel_ui, col_sel_ui)
     
-    # 2. Inputs
-    col1, col2 = st.columns(2)
-    with col1:
-        find_txt = st.text_input("Buscar (Texto exacto o parcial):")
+    st.markdown("---")
     
-    with col2:
-        # Si tiene autocompletado, permitir elegir
+    # 3. Inputs de Búsqueda Principal
+    c1, c2 = st.columns(2)
+    with c1:
+        find_txt = st.text_input("Buscar (Valor actual):")
+    with c2:
+        # Lógica Híbrida: Lista o Manual
         opts = auto_opts.get(col_en, [])
+        replace_val = ""
         if opts:
-            replace_val = st.selectbox("Reemplazar con:", [""] + opts)
+            use_manual = st.checkbox("✍️ Manual", value=False, help="Escribir valor fuera de lista.")
+            if use_manual:
+                replace_val = st.text_input("Reemplazar con:")
+            else:
+                replace_val = st.selectbox("Reemplazar con:", [""] + sorted(opts))
         else:
             replace_val = st.text_input("Reemplazar con:")
-            
-    mode = st.radio("Modo:", ["Coincidencia Exacta", "Contiene (Parcial)"], horizontal=True)
+
+    # 4. FILTROS ADICIONALES (NUEVO)
+    active_filters = {}
+    with st.expander("🎯 Filtros Adicionales (Opcional)", expanded=False):
+        st.caption("Restringe el cambio a las filas que cumplan estas condiciones extra.")
+        
+        # Excluir la columna objetivo para no filtrar por la misma que editamos
+        filter_opts = [c for c in cols_vis if c != col_sel_vis]
+        sel_filters = st.multiselect("Agregar condición en columna:", filter_opts)
+        
+        if sel_filters:
+            for f_vis in sel_filters:
+                f_ui = f_vis.replace(" 📋", "")
+                f_en = col_map.get(f_ui, f_ui)
+                
+                # Input dinámico para el filtro
+                f_opts_list = auto_opts.get(f_en, [])
+                if f_opts_list:
+                    # Si es lista, asumimos coincidencia exacta deseada
+                    val_f = st.selectbox(f"'{f_ui}' es igual a:", f_opts_list, key=f"fil_{f_en}")
+                    if val_f: active_filters[f_en] = {"val": val_f, "type": "exact"}
+                else:
+                    # Si es texto, asumimos búsqueda parcial
+                    val_f = st.text_input(f"'{f_ui}' contiene:", key=f"fil_{f_en}")
+                    if val_f: active_filters[f_en] = {"val": val_f, "type": "contains"}
+
+    # 5. Modo de Búsqueda Principal
+    st.markdown("---")
+    mode = st.radio("Modo de Búsqueda Principal:", ["Coincidencia Exacta", "Contiene (Parcial)"], horizontal=True)
     
-    if st.button("🚀 Reemplazar Todo", type="primary"):
+    if st.button("🚀 Reemplazar", type="primary", use_container_width=True):
         if not find_txt:
             st.error("Escriba qué buscar.")
         else:
             df = st.session_state.df_staging.copy()
-            count = 0
             
-            # Lógica de reemplazo
             if col_en in df.columns:
-                mask = None
+                # A. Máscara Principal (Búsqueda)
+                mask_main = None
                 if mode == "Coincidencia Exacta":
-                    mask = (df[col_en].astype(str) == find_txt)
+                    mask_main = (df[col_en].astype(str) == find_txt)
                 else:
-                    mask = (df[col_en].astype(str).str.contains(find_txt, case=False, na=False))
+                    mask_main = (df[col_en].astype(str).str.contains(find_txt, case=False, na=False))
                 
-                count = mask.sum()
+                # B. Máscara de Filtros (Adicionales)
+                mask_filters = pd.Series(True, index=df.index)
+                filter_desc = []
+                
+                for f_col, f_data in active_filters.items():
+                    if f_col in df.columns:
+                        f_val = f_data["val"]
+                        if f_data["type"] == "exact":
+                            mask_filters &= (df[f_col].astype(str) == str(f_val))
+                            filter_desc.append(f"{f_col}={f_val}")
+                        else:
+                            mask_filters &= (df[f_col].astype(str).str.contains(str(f_val), case=False, na=False))
+                            filter_desc.append(f"{f_col}~{f_val}")
+
+                # C. Máscara Final
+                final_mask = mask_main & mask_filters
+                count = final_mask.sum()
+                
                 if count > 0:
-                    # Fix tipos numericos
-                    final_val = replace_val
+                    # Fix tipos numéricos
+                    final_val_typed = replace_val
                     if pd.api.types.is_numeric_dtype(df[col_en].dtype):
-                        try: final_val = pd.to_numeric(replace_val)
+                        try: final_val_typed = pd.to_numeric(replace_val)
                         except: pass
                     
-                    df.loc[mask, col_en] = final_val
+                    # Aplicar
+                    df.loc[final_mask, col_en] = final_val_typed
                     
-                    # Log y Guardar
-                    log_general_change("Find & Replace", "Bulk Replace", f"En '{col_en}': '{find_txt}' -> '{final_val}' ({count} filas)")
+                    # Fix Autocompletado (Si agregamos un valor nuevo a una lista)
+                    if col_en in st.session_state.autocomplete_options:
+                        v_str = str(final_val_typed)
+                        c_opts = st.session_state.autocomplete_options[col_en]
+                        if v_str not in c_opts:
+                            c_opts.append(v_str)
+                            st.session_state.autocomplete_options[col_en] = sorted(c_opts)
+
+                    # Log
+                    filters_str = f" | Filtros: {', '.join(filter_desc)}" if filter_desc else ""
+                    log_general_change("Find/Replace", "Bulk Replace", f"En '{col_en}': '{find_txt}' -> '{final_val_typed}' ({count} filas){filters_str}")
+                    
+                    # Guardar
                     st.session_state.df_staging = apply_priority_rules(df)
                     
-                    # Update status
+                    # Recalcular Row Status
                     col_stat = "Row Status"
                     if col_stat in st.session_state.df_staging.columns:
                         chk = st.session_state.df_staging.drop(columns=[col_stat, 'Priority_Reason'], errors='ignore').fillna("").astype(str)
@@ -83,10 +149,10 @@ def modal_find_replace(col_map, lang):
                     st.session_state.current_data_hash = None
                     if 'editor_key_ver' in st.session_state: st.session_state.editor_key_ver += 1
                     
-                    st.success(f"✅ Se actualizaron {count} filas.")
+                    st.success(f"✅ {count} filas actualizadas.")
                     st.rerun()
                 else:
-                    st.warning("No se encontraron coincidencias.")
+                    st.warning("No se encontraron coincidencias con esos criterios.")
             else:
                 st.error("Columna no encontrada.")
 
@@ -97,17 +163,17 @@ def modal_bulk_edit(indices_seleccionados: list, col_map_ui_to_en: dict, lang: s
     st.markdown(f"Se editarán **{len(indices_seleccionados)}** facturas seleccionadas.")
 
     cols_raw = [c for c in col_map_ui_to_en.keys() if "Seleccionar" not in c and "ID" not in c]
-    cols_visual = []
+    cols_vis = []
     auto_opts = st.session_state.autocomplete_options
     
     for c_ui in cols_raw:
         c_en = col_map_ui_to_en.get(c_ui, c_ui)
         if c_en in auto_opts and auto_opts[c_en]:
-            cols_visual.append(f"{c_ui} 📋")
+            cols_vis.append(f"{c_ui} 📋")
         else:
-            cols_visual.append(c_ui)
+            cols_vis.append(c_ui)
 
-    col_ui_visual = st.selectbox("¿Qué columna desea editar?", cols_visual)
+    col_ui_visual = st.selectbox("¿Qué columna desea editar?", cols_vis)
     col_ui = col_ui_visual.replace(" 📋", "")
     col_en = col_map_ui_to_en.get(col_ui, col_ui)
 
@@ -115,7 +181,11 @@ def modal_bulk_edit(indices_seleccionados: list, col_map_ui_to_en: dict, lang: s
     nuevo_valor = None
     
     if opts:
-        nuevo_valor = st.selectbox(f"Valor para '{col_ui}':", opts, index=None, placeholder="Seleccione...")
+        use_manual = st.checkbox("✍️ Ingresar manualmente", value=False, key="chk_manual_bulk")
+        if use_manual:
+            nuevo_valor = st.text_input(f"Valor manual para '{col_ui}':")
+        else:
+            nuevo_valor = st.selectbox(f"Valor para '{col_ui}':", opts, index=None, placeholder="Seleccione...")
     else:
         nuevo_valor = st.text_input(f"Valor para '{col_ui}':")
 
@@ -126,6 +196,7 @@ def modal_bulk_edit(indices_seleccionados: list, col_map_ui_to_en: dict, lang: s
             try:
                 df = st.session_state.df_staging.copy()
                 val_final = nuevo_valor
+                
                 if col_en in df.columns and pd.api.types.is_numeric_dtype(df[col_en].dtype):
                     try: val_final = pd.to_numeric(nuevo_valor)
                     except: st.warning("Guardando texto en columna numérica.")
@@ -141,6 +212,14 @@ def modal_bulk_edit(indices_seleccionados: list, col_map_ui_to_en: dict, lang: s
                 
                 if count > 0:
                     log_general_change("Bulk Edit Modal", "Cell Edit (Bulk)", f"Editadas {count} filas en {col_en} a '{val_final}'")
+                    
+                    if col_en in st.session_state.autocomplete_options:
+                        val_str = str(val_final)
+                        current_opts = st.session_state.autocomplete_options[col_en]
+                        if val_str not in current_opts:
+                            current_opts.append(val_str)
+                            st.session_state.autocomplete_options[col_en] = sorted(current_opts)
+
                     st.session_state.df_staging = apply_priority_rules(df)
                     
                     col_stat = "Row Status"
@@ -350,7 +429,6 @@ def render_detailed_view(lang: str, df_filtered: pd.DataFrame, df_master: pd.Dat
             cb_bulk_delete(filas_sel)
         st.markdown("---")
 
-    # BOTONES GLOBALES
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.button(get_text(lang, 'add_row_button'), on_click=cb_add_row, use_container_width=True)
     c2.button(get_text(lang, 'save_changes_button'), on_click=cb_save_draft, type="primary", use_container_width=True)
