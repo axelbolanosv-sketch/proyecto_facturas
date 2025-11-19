@@ -49,13 +49,22 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
     st.sidebar.markdown("### 👤 Perfil & Auditoría")
     
     if st.session_state.username is None: st.session_state.username = ""
-    st.session_state.username = st.sidebar.text_input("Usuario Activo", value=st.session_state.username, placeholder="Ej. Juan Perez")
+    st.session_state.username = st.sidebar.text_input(
+        get_text(lang, 'user_active_label'), 
+        value=st.session_state.username, 
+        placeholder=get_text(lang, 'user_placeholder')
+    )
     
     if not st.session_state.username: 
-        st.sidebar.warning("Ingrese usuario para registrar acciones.")
+        st.sidebar.warning(get_text(lang, 'user_warning'))
     
     log_data = get_audit_log_excel()
-    st.sidebar.download_button("📥 Descargar Log de Auditoría", data=log_data, file_name="log_auditoria_general.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.sidebar.download_button(
+        get_text(lang, 'audit_log_sidebar_btn'), 
+        data=log_data, 
+        file_name="log_auditoria_general.xlsx", 
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
     st.sidebar.markdown("---")
     opts = {"Español": "es", "English": "en"}
@@ -64,7 +73,7 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
     st.sidebar.radio("Idioma / Language", opts.keys(), index=list(opts.keys()).index(curr), key='language_selector_key', on_change=cb_lang)
 
     st.sidebar.markdown(f"## {get_text(lang, 'control_area')}")
-    up_files = st.sidebar.file_uploader("Cargar Excel / Upload Excel", type=["xlsx"], accept_multiple_files=True, on_change=clear_state_and_prepare_reload)
+    up_files = st.sidebar.file_uploader(get_text(lang, 'uploader_label'), type=["xlsx"], accept_multiple_files=True, on_change=clear_state_and_prepare_reload)
 
     if df_loaded:
         # --- FILTROS ---
@@ -129,15 +138,15 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
             "autocomplete_options": st.session_state.autocomplete_options,
             "df_staging_data": df_json
         }
-        st.sidebar.download_button("💾 Guardar Configuración", json.dumps(config_data, indent=2), "config.json", "application/json")
+        st.sidebar.download_button(get_text(lang, 'save_config_button'), json.dumps(config_data, indent=2), "config.json", "application/json")
         
-        conf_up = st.sidebar.file_uploader("📂 Cargar Configuración", type=["json"], key="config_uploader")
+        conf_up = st.sidebar.file_uploader(get_text(lang, 'load_config_label'), type=["json"], key="config_uploader")
         if conf_up and not st.session_state.config_file_processed:
             if callback_process_config(conf_up):
                 st.session_state.config_file_processed = True
                 st.rerun()
 
-        if st.sidebar.button("🔄 Resetear Todo"):
+        if st.sidebar.button(get_text(lang, 'reset_config_button')):
             clear_state_and_prepare_reload()
             st.session_state.priority_rules = get_default_rules()
             _clear_rules_editor_cache()
@@ -149,9 +158,8 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
 
         # --- GESTOR DE LISTAS Y ANALIZADOR ---
         st.sidebar.markdown("---")
-        with st.sidebar.expander("📋 Gestionar Listas / Analizar", expanded=False):
+        with st.sidebar.expander(get_text(lang, 'manage_lists_expander'), expanded=False):
             # 1. Lista completa para que el usuario pueda elegir CUALQUIERA
-            # Marcamos con icono las que ya tienen opciones
             list_visual_all = []
             for c in cols_ui:
                 cen = map_en.get(c, c)
@@ -160,7 +168,7 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
                 else:
                     list_visual_all.append(c)
             
-            col_list_visual = st.selectbox("Seleccionar Columna:", sorted(list_visual_all), key="sel_list_edit")
+            col_list_visual = st.selectbox(get_text(lang, 'select_column_to_edit'), sorted(list_visual_all), key="sel_list_edit")
             col_list_clean = col_list_visual.replace(" 📋", "")
             col_list_en = map_en.get(col_list_clean, col_list_clean)
             
@@ -170,36 +178,35 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
                 curr_opts = st.session_state.autocomplete_options[col_list_en]
                 st.success(f"✅ Autocompletado activo ({len(curr_opts)} opciones).")
                 
-                new_op = st.text_input("Nueva opción:", key="new_op_txt")
-                if st.button("➕ Añadir"):
+                new_op = st.text_input(get_text(lang, 'add_option_label'), key="new_op_txt")
+                if st.button(get_text(lang, 'add_option_btn')):
                     if new_op and new_op not in curr_opts:
                         curr_opts.append(new_op)
                         st.session_state.autocomplete_options[col_list_en] = sorted(curr_opts)
                         st.rerun()
                 
-                del_ops = st.multiselect("Borrar opciones:", curr_opts, key="del_ops_mul")
-                if st.button("🗑️ Borrar Seleccionados"):
+                del_ops = st.multiselect(get_text(lang, 'remove_options_label'), curr_opts, key="del_ops_mul")
+                if st.button(get_text(lang, 'remove_option_btn')):
                     st.session_state.autocomplete_options[col_list_en] = [x for x in curr_opts if x not in del_ops]
                     st.rerun()
             else:
                 # CASO B: NO TIENE LISTA -> OFRECER ANÁLISIS
-                st.warning("⚠️ Esta columna NO tiene lista de valores guardada.")
-                st.info("Puede analizar la columna para extraer todos los valores únicos actuales y convertirlos en una lista desplegable.")
+                st.warning(get_text(lang, 'no_list_warning'))
+                st.info(get_text(lang, 'analyze_info'))
                 
-                if st.button("🔄 Analizar Valores Únicos"):
+                if st.button(get_text(lang, 'analyze_values_button')):
                     if st.session_state.df_staging is not None and col_list_en in st.session_state.df_staging.columns:
                         try:
-                            # Extraer únicos, convertir a string y ordenar
                             unique_vals = st.session_state.df_staging[col_list_en].fillna("").astype(str).unique().tolist()
                             unique_vals = sorted([x for x in unique_vals if x.strip() != ""])
                             
                             if unique_vals:
                                 st.session_state.autocomplete_options[col_list_en] = unique_vals
-                                st.success(f"¡Análisis completo! {len(unique_vals)} opciones encontradas.")
+                                st.success(get_text(lang, 'analyze_success').format(n=len(unique_vals)))
                                 st.rerun()
                             else:
-                                st.warning("La columna está vacía.")
+                                st.warning(get_text(lang, 'analyze_empty'))
                         except Exception as e:
-                            st.error(f"Error al analizar: {e}")
+                            st.error(get_text(lang, 'analyze_error').format(e=e))
 
     return up_files

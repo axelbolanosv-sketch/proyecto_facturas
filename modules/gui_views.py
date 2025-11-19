@@ -1,20 +1,22 @@
 # modules/gui_views.py
-# VERSIÓN 9.0: TOOLTIPS DINÁMICOS (POP-UPS) EN CELDAS
-# - Se añaden descripciones emergentes a la columna 'Prioridad' mostrando la 'Razón'.
-# - Se mantiene toda la funcionalidad anterior (Búsqueda Híbrida, Edición Masiva, etc.).
+# VERSIÓN 12.1: TRADUCCIONES DE BOTONES APLICADAS
+# - Se mantienen todas las optimizaciones de Fragments y rendimiento.
+# - Se aplican traducciones a botones de descarga.
 
 import streamlit as st
 import pandas as pd
 import json
 import numpy as np
-import warnings
 from modules.translator import get_text, translate_column
 from modules.gui_utils import to_excel
 from modules.rules_service import apply_priority_rules
 from modules.audit_service import log_general_change
 import streamlit_hotkeys as hotkeys
 
-# --- MODAL BUSCAR Y REEMPLAZAR ---
+# --- CONFIGURACIÓN DE RENDIMIENTO ---
+MAX_ROWS_FOR_TOOLTIPS = 1500 
+
+# --- MODAL BUSCAR Y REEMPLAZAR (Sin Cambios) ---
 @st.dialog("🔍 Buscar y Reemplazar")
 def modal_find_replace(col_map, lang):
     st.markdown("Esta herramienta buscará y reemplazará valores en la **Columna Objetivo**.")
@@ -187,7 +189,140 @@ def render_kpi_dashboard(lang, df):
     c2.metric(get_text(lang, 'kpi_total_amount'), f"${tot:,.2f}")
     c3.metric(get_text(lang, 'kpi_avg_amount'), f"${(tot/len(df) if len(df) else 0):,.2f}")
 
-# --- VISTA DETALLADA (CON TOOLTIPS) ---
+# --- FRAGMENTO OPTIMIZADO (Lógica de Editor) ---
+@st.fragment
+def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_df):
+    
+    if 'editor_key_ver' not in st.session_state: st.session_state.editor_key_ver = 0
+    
+    if 'editor_state' not in st.session_state or st.session_state.current_data_hash != h_data:
+        st.session_state.editor_state = df_disp.copy()
+        st.session_state.current_data_hash = h_data
+        st.session_state.editor_key_ver += 1
+        st.session_state.pending_selection = None 
+        st.rerun()
+
+    if st.session_state.get("pending_selection") is not None:
+        val = st.session_state.pop("pending_selection")
+        df_disp["Seleccionar"] = val
+        st.session_state.editor_state = df_disp.copy()
+
+    styled_data = df_disp 
+    use_tooltips = len(df_disp) <= MAX_ROWS_FOR_TOOLTIPS
+    
+    if use_tooltips:
+        try:
+            tt_df = pd.DataFrame("", index=df_disp.index, columns=df_disp.columns)
+            col_prio_ui = translate_column(lang, "Priority")
+            if col_prio_ui in df_disp.columns:
+                clean_idxs = df_disp.index.astype(str).str.replace("🚩 ", "")
+                master = original_staging_df
+                if not master.empty:
+                    target_idxs = clean_idxs
+                    if pd.api.types.is_numeric_dtype(master.index):
+                        target_idxs = pd.to_numeric(clean_idxs, errors='coerce')
+                    reasons = master.reindex(target_idxs)['Priority_Reason'].fillna("Sin información")
+                    tt_df[col_prio_ui] = reasons.values
+            styled_data = df_disp.style.set_tooltips(tt_df)
+        except:
+            styled_data = df_disp
+    else:
+        st.caption(f"🚀 Modo Rendimiento: Tooltips desactivados (> {MAX_ROWS_FOR_TOOLTIPS} filas).")
+
+    c_sel_all, c_desel_all, _ = st.columns([0.15, 0.15, 0.7])
+    
+    if c_sel_all.button("☑️ Todos", help="Seleccionar todo"):
+        st.session_state.pending_selection = True
+        st.session_state.editor_key_ver += 1
+        st.rerun()
+        
+    if c_desel_all.button("⬜ Ninguno", help="Deseleccionar todo"):
+        st.session_state.pending_selection = False
+        st.session_state.editor_key_ver += 1
+        st.rerun()
+
+    edited = st.data_editor(
+        styled_data, 
+        column_config=cc,
+        num_rows="dynamic",
+        key=f"ed_{st.session_state.editor_key_ver}",
+        height=600,
+        use_container_width=True
+    )
+
+    def cb_add():
+        idx = int(pd.to_numeric(st.session_state.df_staging.index, errors='coerce').max() + 1)
+        row = {c: False if c=="Seleccionar" else "" for c in st.session_state.editor_state.columns}
+        st.session_state.editor_state = pd.concat([pd.DataFrame([row], index=[str(idx)]), st.session_state.editor_state])
+        st.session_state.editor_key_ver += 1
+        log_general_change("UI", "Add Row", f"Fila {idx}")
+        st.rerun()
+
+    def cb_del(idxs):
+        df = st.session_state.df_staging
+        drop = [str(i) for i in idxs if str(i) in df.index.astype(str)]
+        st.session_state.df_staging = df.drop(drop, errors='ignore')
+        log_general_change("UI", "Del Row", f"{len(drop)} filas")
+        st.session_state.editor_state = None
+        st.session_state.current_data_hash = None
+        st.success("Borrado."); st.rerun()
+
+    def cb_save():
+        try:
+            ed = edited.copy()
+            if "Seleccionar" in ed: del ed["Seleccionar"]
+            ed.index = ed.index.astype(str).str.replace("🚩 ", "")
+            ed.columns = [col_map.get(c,c) for c in ed.columns]
+            
+            st.session_state.df_staging.index = st.session_state.df_staging.index.astype(str)
+            st.session_state.df_staging.update(ed)
+            new = ed.index.difference(st.session_state.df_staging.index)
+            if not new.empty: st.session_state.df_staging = pd.concat([st.session_state.df_staging, ed.loc[new]])
+            
+            st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
+            log_general_change("UI", "Save", "Borrador guardado")
+            st.session_state.editor_state = None; st.session_state.current_data_hash = None
+            st.success("Guardado."); st.rerun()
+        except Exception as e: st.error(e)
+
+    def cb_rev():
+        st.session_state.df_staging = st.session_state.df_original.copy()
+        st.session_state.editor_state = None; st.session_state.current_data_hash = None
+        log_general_change("UI", "Revert", "Revertido")
+        st.rerun()
+
+    def cb_com():
+        st.session_state.df_original = st.session_state.df_staging.copy()
+        log_general_change("UI", "Commit", "Estable guardado")
+        st.success("Hecho.")
+
+    sel_idxs = []
+    if "Seleccionar" in edited.columns:
+        sel_idxs = pd.to_numeric(edited[edited["Seleccionar"]].index.astype(str).str.replace("🚩 ", ""), errors='coerce').dropna().unique()
+
+    if len(sel_idxs)>0:
+        st.info(f"✅ {len(sel_idxs)} seleccionados.")
+        c1, c2, _ = st.columns([0.2,0.2,0.6])
+        if c1.button("✏️ Editar"): modal_bulk_edit(sel_idxs, col_map, lang)
+        if c2.button("🗑️ Borrar", type="primary"): cb_del(sel_idxs)
+        st.markdown("---")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.button(get_text(lang, 'add_row_button'), on_click=cb_add)
+    c2.button(get_text(lang, 'save_changes_button'), on_click=cb_save, type="primary")
+    c3.button(get_text(lang, 'commit_changes_button'), on_click=cb_com)
+    c4.button(get_text(lang, 'reset_changes_button'), on_click=cb_rev)
+    if c5.button("🔍 Buscar/Reemplazar"): modal_find_replace(col_map, lang)
+
+    if hotkeys.pressed("save_draft"): cb_save()
+    if hotkeys.pressed("commit_changes"): cb_com()
+    if hotkeys.pressed("add_row"): cb_add()
+    if hotkeys.pressed("revert_stable"): cb_rev()
+
+    st.markdown("---")
+    st.download_button(get_text(lang, 'download_excel_simple'), to_excel(edited), "filtro.xlsx")
+
+
 def render_detailed_view(lang, df_filtered, df_master, col_map, all_cols):
     cols_show = [c for c in st.session_state.columnas_visibles if c in df_filtered.columns]
     if not cols_show: st.warning("Seleccione columnas."); return
@@ -224,149 +359,10 @@ def render_detailed_view(lang, df_filtered, df_master, col_map, all_cols):
         elif "Date" in cen and "Age" not in cen:
             cc[cui] = st.column_config.TextColumn(f"{cui}", help="YYYY-MM-DD")
 
-    # --- LÓGICA DE TOOLTIPS ---
-    # Creamos un objeto Styler que contiene los tooltips
-    # Usamos try/except para evitar errores si las columnas cambian dinámicamente
-    styled_data = df_disp # Fallback
-    try:
-        tt_df = pd.DataFrame("", index=df_disp.index, columns=df_disp.columns)
-        col_prio_ui = translate_column(lang, "Priority")
-        
-        if col_prio_ui in df_disp.columns:
-            # Mapear índices visuales ("🚩 1") a índices reales ("1") para buscar la razón
-            clean_idxs = df_disp.index.astype(str).str.replace("🚩 ", "")
-            
-            # Obtener el maestro para sacar las razones actualizadas
-            master = st.session_state.df_staging
-            if not master.empty:
-                # Asegurar compatibilidad de tipos de índice
-                target_idxs = clean_idxs
-                if pd.api.types.is_numeric_dtype(master.index):
-                    target_idxs = pd.to_numeric(clean_idxs, errors='coerce')
-                
-                # Extraer razones (Priority_Reason) alineadas con las filas visibles
-                reasons = master.reindex(target_idxs)['Priority_Reason'].fillna("Sin información")
-                
-                # Asignar al DataFrame de tooltips
-                tt_df[col_prio_ui] = reasons.values
-
-        # Aplicar tooltips al Styler
-        styled_data = df_disp.style.set_tooltips(tt_df)
-    except Exception as e:
-        # Si falla el tooltip, mostramos el dataframe normal sin romper la app
-        print(f"Error tooltips: {e}")
-        styled_data = df_disp
-
-    # --- RENDER EDITOR ---
     h_data = hash((json.dumps(st.session_state.filtros_activos, default=str), tuple(st.session_state.columnas_visibles), sort_opt))
-    if 'editor_key_ver' not in st.session_state: st.session_state.editor_key_ver = 0
-    
-    # Nota: Si cambia el hash, reconstruimos el editor_state base.
-    # El styled_data se construye en cada run sobre el editor_state.
-    if 'editor_state' not in st.session_state or st.session_state.current_data_hash != h_data:
-        st.session_state.editor_state = df_disp.copy()
-        st.session_state.current_data_hash = h_data
-        st.session_state.editor_key_ver += 1
-        st.rerun()
 
-    # IMPORTANTE: st.data_editor recibe el OBJETO CON ESTILO (styled_data)
-    # pero usa st.session_state.editor_state como base lógica para persistencia.
-    # En este caso, pasamos styled_data directamente para visualización.
-    # Al usar Styler, la edición estructural (añadir filas nativo) se desactiva, 
-    # pero nuestros botones personalizados funcionan.
-    
-    with st.spinner("Cargando..."):
-        edited = st.data_editor(
-            styled_data, # <-- AQUÍ VA EL STYLER CON TOOLTIPS
-            column_config=cc,
-            num_rows="dynamic",
-            key=f"ed_{st.session_state.editor_key_ver}",
-            height=600,
-            use_container_width=True
-        )
+    render_editor_fragment(df_disp, col_map, lang, cc, h_data, st.session_state.df_staging)
 
-    # --- CALLBACKS ---
-    def cb_add(log=True):
-        idx = int(pd.to_numeric(st.session_state.df_staging.index, errors='coerce').max() + 1)
-        row = {c: False if c=="Seleccionar" else "" for c in st.session_state.editor_state.columns}
-        for c in row:
-            cen = col_map.get(c,c)
-            if cen in st.session_state.df_staging.columns and pd.api.types.is_numeric_dtype(st.session_state.df_staging[cen].dtype):
-                row[c] = 0
-        st.session_state.editor_state = pd.concat([pd.DataFrame([row], index=[str(idx)]), st.session_state.editor_state])
-        st.session_state.editor_key_ver += 1
-        if log: log_general_change("UI", "Add Row", f"Fila {idx}")
-
-    def cb_sel(v):
-        st.session_state.editor_state["Seleccionar"] = v
-        st.session_state.editor_key_ver += 1
-
-    def cb_del(idxs):
-        df = st.session_state.df_staging
-        drop = [str(i) for i in idxs if str(i) in df.index.astype(str)]
-        st.session_state.df_staging = df.drop(drop, errors='ignore')
-        
-        # Limpiar visual
-        mask = ~pd.to_numeric(st.session_state.editor_state.index.astype(str).str.replace("🚩 ",""), errors='coerce').isin(pd.to_numeric(idxs))
-        st.session_state.editor_state = st.session_state.editor_state[mask]
-        
-        log_general_change("UI", "Del Row", f"{len(drop)} filas")
-        st.session_state.editor_key_ver += 1
-        st.success("Borrado."); st.rerun()
-
-    def cb_save(log=True):
-        try:
-            ed = edited.copy()
-            if "Seleccionar" in ed: del ed["Seleccionar"]
-            ed.index = ed.index.astype(str).str.replace("🚩 ", "")
-            ed.columns = [col_map.get(c,c) for c in ed.columns]
-            
-            st.session_state.df_staging.index = st.session_state.df_staging.index.astype(str)
-            st.session_state.df_staging.update(ed)
-            new = ed.index.difference(st.session_state.df_staging.index)
-            if not new.empty: st.session_state.df_staging = pd.concat([st.session_state.df_staging, ed.loc[new]])
-            
-            st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
-            if log: log_general_change("UI", "Save", "Borrador guardado")
-            st.session_state.editor_state = None; st.session_state.current_data_hash = None
-            st.success("Guardado."); st.rerun()
-        except Exception as e: st.error(e)
-
-    def cb_rev(log=True):
-        st.session_state.df_staging = st.session_state.df_original.copy()
-        st.session_state.editor_state = None; st.session_state.current_data_hash = None
-        if log: log_general_change("UI", "Revert", "Revertido")
-        st.rerun()
-
-    def cb_com():
-        st.session_state.df_original = st.session_state.df_staging.copy()
-        log_general_change("UI", "Commit", "Estable guardado")
-        st.success("Hecho.")
-
-    sel_idxs = []
-    if "Seleccionar" in edited.columns:
-        sel_idxs = pd.to_numeric(edited[edited["Seleccionar"]].index.astype(str).str.replace("🚩 ", ""), errors='coerce').dropna().unique()
-
-    if len(sel_idxs)>0:
-        st.info(f"✅ {len(sel_idxs)} seleccionados.")
-        c1, c2, _ = st.columns([0.2,0.2,0.6])
-        if c1.button("✏️ Editar"): modal_bulk_edit(sel_idxs, col_map, lang)
-        if c2.button("🗑️ Borrar", type="primary"): cb_del(sel_idxs)
-        st.markdown("---")
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.button(get_text(lang, 'add_row_button'), on_click=cb_add)
-    c2.button(get_text(lang, 'save_changes_button'), on_click=cb_save, type="primary")
-    c3.button(get_text(lang, 'commit_changes_button'), on_click=cb_com)
-    c4.button(get_text(lang, 'reset_changes_button'), on_click=cb_rev)
-    if c5.button("🔍 Buscar/Reemplazar"): modal_find_replace(col_map, lang)
-
-    if hotkeys.pressed("save_draft", key="h1"): cb_save(False)
-    if hotkeys.pressed("add_row", key="h2"): cb_add(False)
-    if hotkeys.pressed("revert_stable", key="h3"): cb_rev(False)
-
-    st.markdown("---")
-    st.download_button("Descargar Excel", to_excel(edited), "filtro.xlsx")
 
 def render_grouped_view(lang, df, col_map, all_cols):
     st.markdown(f"## {get_text(lang, 'group_by_header')}")
@@ -382,4 +378,4 @@ def render_grouped_view(lang, df, col_map, all_cols):
         res = d.groupby(gen).agg(agg)
         res.columns = ['_'.join(c).strip() for c in res.columns]
         st.dataframe(res, use_container_width=True)
-        st.download_button("Descargar", to_excel(res), "agrupado.xlsx")
+        st.download_button(get_text(lang, 'download_button_short'), to_excel(res), "agrupado.xlsx")

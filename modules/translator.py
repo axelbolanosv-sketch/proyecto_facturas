@@ -1,4 +1,5 @@
-# modules/translator.py (VERSIÓN ACTUALIZADA CON TEXTOS DE REGLAS V2)
+# modules/translator.py
+# VERSIÓN ACTUALIZADA: NUEVAS CLAVES PARA SIDEBAR Y BOTONES
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS ---
 COLUMN_TRANSLATIONS = {
@@ -122,6 +123,8 @@ LANGUAGES = {
         
         'download_excel_manual_edits_button': 'Descargar Borrador Actual (Excel)',
         'download_excel_filtered_button': 'Descargar Vista Filtrada (Excel)',
+        "download_excel_simple": "Descargar Excel",
+        "download_button_short": "Descargar",
 
         "status_incomplete": "Fila Incompleta",
         "status_complete": "Fila Completa",
@@ -135,22 +138,35 @@ LANGUAGES = {
         
         "editor_manual_save_warning": "⚠️ **Importante:** Sus cambios **no se guardan automáticamente** (ni con 'Enter'). Puede editar múltiples celdas. Haga clic en **'Guardar Borrador' (o Ctrl+S)** para guardar. Si cambia de idioma, filtros, o vista *antes* de guardar, sus ediciones se perderán.",
         
+        # --- CLAVES SIDEBAR ---
+        "user_active_label": "Usuario Activo",
+        "user_placeholder": "Ej. Juan Perez",
+        "user_warning": "Ingrese usuario para registrar acciones.",
+        "audit_log_sidebar_btn": "📥 Descargar Log de Auditoría",
+        
         "config_header": "Gestión de Configuración",
         "config_help_text": "Guarde su vista actual (filtros, columnas, orden) para usarla después, o cargue una guardada previamente.",
         "save_config_button": "💾 Guardar Configuración",
         "load_config_label": "📂 Cargar Configuración",
-        "reset_config_button": "🔄 Restablecer Todo (Limpiar)",
+        "reset_config_button": "🔄 Resetear Todo",
         "reset_config_success": "¡Configuración restablecida a valores por defecto!",
         
-        "manage_autocomplete_header": "📋 Gestión de Listas (Autocompletado)",
+        "manage_autocomplete_header": "📋 Gestión de Listas / Analizar",
+        "manage_lists_expander": "📋 Gestión de Listas / Analizar",
         "manage_autocomplete_info": "Añada o elimine opciones en los desplegables de la tabla (ej. nuevos proveedores).",
         "select_column_to_edit": "Seleccione la columna a editar:",
         "current_options": "Opciones Actuales ({n}):",
-        "add_option_label": "Nuevo Elemento",
+        "add_option_label": "Nueva opción:",
         "add_option_placeholder": "Escriba nueva opción...",
         "add_option_btn": "➕ Añadir",
-        "remove_options_label": "Seleccionar para Eliminar:",
-        "remove_option_btn": "🗑️ Eliminar Seleccionados",
+        "remove_options_label": "Borrar opciones:",
+        "remove_option_btn": "🗑️ Borrar Seleccionados",
+        "analyze_values_button": "🔄 Analizar Valores Únicos",
+        "analyze_success": "¡Análisis completo! {n} opciones encontradas.",
+        "analyze_empty": "La columna está vacía.",
+        "analyze_error": "Error al analizar: {e}",
+        "no_list_warning": "⚠️ Esta columna NO tiene lista de valores guardada.",
+        "analyze_info": "Puede analizar la columna para extraer todos los valores únicos actuales y convertirlos en una lista desplegable.",
         "option_added_success": "✅ ¡Opción '{val}' añadida a '{col}'!",
         "options_removed_success": "✅ ¡{n} opciones eliminadas de '{col}'!",
         
@@ -158,7 +174,6 @@ LANGUAGES = {
         "date_format_es": "%d-%m-%Y",
         "date_format_en": "%m-%d-%Y",
         
-        # --- [MODIFICADO] Textos del Editor de Reglas y Auditoría ---
         "rules_header": "Lógica de Negocio",
         "rules_edit_button": "⚙️ Editar Reglas de Prioridad",
         "rules_editor_title": "Editor de Reglas de Prioridad",
@@ -191,9 +206,131 @@ LANGUAGES = {
         "audit_log_download_btn": "Descargar Log (Excel)"
     },
     "en": {
-        # (Se omiten las traducciones al inglés por brevedad,
-        #  pero se añadirían de forma análoga)
         "title": "Dynamic Invoice Search",
+        "subtitle": "Upload ANY Excel file (.xlsx) and add multiple filters.",
+        "lang_selector": "Language",
+        "control_area": "Control Area",
+        "uploader_label": "Upload your invoice file",
+        "add_filter_header": "Add Filter",
+        "column_select": "Select a column:",
+        "column_select_value": "Select a value:", 
+        "search_text": "Search text (partial match)",
+        "add_filter_button": "Add Filter",
+        "warning_no_filter": "You must select a column and enter a value.",
+        "active_filters_header": "Active Filters",
+        "no_filters_applied": "No filters applied. Showing full table.",
+        "filter_display": "Column **{columna}** contains **'{valor}'**",
+        "remove_button": "Remove",
+        "clear_all_button": "Clear all filters",
+        "results_header": "Results ({num_filas} rows found)",
+        "download_json_button": "Download results as JSON",
+        "download_excel_button": "Download results as Excel",
+        "error_critical": "Critical Error processing file: {e}",
+        "error_corrupt": "File may be corrupt or have an unexpected format.",
+        "info_upload": "Please upload an .xlsx file to start.",
+
+        "kpi_header": "Search Summary",
+        "kpi_total_invoices": "Total Invoices",
+        "kpi_total_amount": "Total Amount Filtered",
+        "kpi_avg_amount": "Average Amount",
+        "kpi_total_amount_help": "Total sum of 'Total' column for all filtered invoices. Measures materiality and financial impact.",
+        "kpi_avg_amount_help": "Average amount per invoice (Total / No. Invoices). Useful for detecting anomalies and 'typical' transaction size.",
+        
+        "group_by_header": "Grouped Analysis",
+        "group_by_select": "Group results by?",
+        "group_total_amount": "Total Amount",
+        "group_avg_amount": "Average Amount",
+        "group_invoice_count": "Invoice Count",
+        "group_min_amount": "Min Amount",
+        "group_max_amount": "Max Amount",
+        "group_avg_age": "Avg. Age (Days)",
+        
+        "group_view_blank_row_info": "ℹ️ **Note:** A blank row in this table groups all invoices that had no value (were empty) in the selected grouping column (e.g., a blank 'Pay Status').",
+        
+        "detailed_results_header": "Detailed Results",
+        
+        "visible_cols_header": "Visible Columns",
+        "visible_cols_select": "Select columns to view:",
+        "visible_cols_toggle_button": "Toggle All",
+        "visible_cols_warning": "Please select at least one column to display.",
+        
+        "view_type_header": "View Type",
+        "view_type_detailed": "Detailed",
+        "view_type_grouped": "Grouped",
+        
+        'hotkey_loading_warning': '⚠️ **Attention:** Please do not use keyboard shortcuts (e.g. Ctrl+S) while the data editor is loading.',
+        
+        'autocomplete_help': 'Select an existing value or type to filter. This helps maintain consistency.',
+        'editor_info_help': 'You are in edit mode. Double-click a cell to modify it. You can add or remove rows using the (+) and (x) buttons at the end.',
+        
+        'reset_changes_button': 'Revert to Stable',
+        'reset_changes_help': 'Discirds draft changes and restores the last stable save point. (Ctrl+Z)',
+        'add_row_button': '➕ Add Row',
+        'add_row_help': 'Click to add a row (or use Ctrl+I).',
+        'editor_info_help_add_row': '⚠️ Press "Save Draft" after editing to update row status.',
+        'save_changes_button': 'Save Draft',
+        'save_changes_help': 'Saves changes to the working draft. KPIs will update. (Ctrl+S)',
+        'commit_changes_button': 'Save Stable',
+        'commit_changes_help': 'Saves the current draft as the new stable restore point. (Ctrl+Shift+S)',
+        'restore_pristine_button': 'Restore Original',
+        'restore_pristine_help': 'DANGER! Deletes ALL changes (draft and stable) and restores data from the original Excel file.',
+        'commit_success_message': 'Stable restore point saved successfully!',
+        
+        'editor_actions_header': 'Editor Actions',
+        
+        'download_excel_manual_edits_button': 'Download Current Draft (Excel)',
+        'download_excel_filtered_button': 'Download Filtered View (Excel)',
+        "download_excel_simple": "Download Excel",
+        "download_button_short": "Download",
+
+        "status_incomplete": "Incomplete Row",
+        "status_complete": "Complete Row",
+        "search_text_placeholder_default": "Type your search...",
+        "search_text_placeholder_status": "E.g.: Complete Row",
+        "search_text_help_default": "Type your search and press 'Enter' or the 'Add' button",
+        "search_text_help_status": "Type 'Complete Row' or 'Incomplete Row' and press 'Enter'",
+
+        "editor_info_help_save": "Click 'Save Draft' to update status.",
+        "save_success_message": "Draft saved and status updated successfully!",
+        
+        "editor_manual_save_warning": "⚠️ **Important:** Your changes are **not saved automatically** (not even with 'Enter'). You can edit multiple cells. Click **'Save Draft' (or Ctrl+S)** to save. If you change language, filters, or view *before* saving, your edits will be lost.",
+        
+        # --- CLAVES SIDEBAR EN ---
+        "user_active_label": "Active User",
+        "user_placeholder": "E.g. John Doe",
+        "user_warning": "Enter user to log actions.",
+        "audit_log_sidebar_btn": "📥 Download Audit Log",
+        
+        "config_header": "Configuration Management",
+        "config_help_text": "Save your current view (filters, columns, order) to use later, or load a previously saved one.",
+        "save_config_button": "💾 Save Configuration",
+        "load_config_label": "📂 Load Configuration",
+        "reset_config_button": "🔄 Reset All",
+        "reset_config_success": "Configuration reset to default values!",
+        
+        "manage_autocomplete_header": "📋 Manage Lists / Analyze",
+        "manage_lists_expander": "📋 Manage Lists / Analyze",
+        "manage_autocomplete_info": "Add or remove options in table dropdowns (e.g., new vendors).",
+        "select_column_to_edit": "Select column to edit:",
+        "current_options": "Current Options ({n}):",
+        "add_option_label": "New Option:",
+        "add_option_placeholder": "Type new option...",
+        "add_option_btn": "➕ Add",
+        "remove_options_label": "Remove options:",
+        "remove_option_btn": "🗑️ Remove Selected",
+        "analyze_values_button": "🔄 Analyze Unique Values",
+        "analyze_success": "Analysis complete! {n} options found.",
+        "analyze_empty": "Column is empty.",
+        "analyze_error": "Analysis error: {e}",
+        "no_list_warning": "⚠️ This column has NO saved value list.",
+        "analyze_info": "You can analyze the column to extract all current unique values and turn them into a dropdown list.",
+        "option_added_success": "✅ Option '{val}' added to '{col}'!",
+        "options_removed_success": "✅ {n} options removed from '{col}'!",
+        
+        "date_format_help": "Save format: DD-MM-YYYY. Will attempt to parse other formats (e.g. 20220309).",
+        "date_format_es": "%d-%m-%Y",
+        "date_format_en": "%m-%d-%Y",
+
         "rules_header": "Business Logic",
         "rules_edit_button": "⚙️ Edit Priority Rules",
         "rules_editor_title": "Priority Rules Editor",

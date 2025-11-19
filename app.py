@@ -18,11 +18,13 @@ st.set_page_config(layout="wide", page_title="Gestor de Facturas")
 load_custom_css()
 
 # Hotkeys Globales
+# AQUI ESTABA EL ERROR: Faltaba registrar el combo con Shift
 hotkeys.activate([
     hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True),
+    hotkeys.hk("commit_changes", "s", ctrl=True, shift=True, prevent_default=True), # <--- NUEVO
     hotkeys.hk("add_row", "i", ctrl=True, prevent_default=True),
     hotkeys.hk("revert_stable", "z", ctrl=True, prevent_default=True)
-], key="hk_main")
+])
 
 st.title(f"🔎 {get_text(lang, 'title')}")
 
