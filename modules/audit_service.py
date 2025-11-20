@@ -2,6 +2,7 @@
 """
 Servicio de log de auditoría generalizado (Celdas, Reglas, Filas, Usuario).
 Centraliza la lógica de registro de cambios para toda la aplicación.
+Versión Actualizada: Soporte para reglas multi-condición.
 """
 
 import streamlit as st
@@ -35,6 +36,20 @@ def log_general_change(reason: str, action: str, change_summary: str, rule_id: s
         "change_summary": change_summary
     })
 
+def _format_conditions(conditions: list) -> str:
+    """Convierte la lista de condiciones a un string legible para el log."""
+    if not conditions:
+        return "Sin condiciones"
+    
+    descriptions = []
+    for c in conditions:
+        col = c.get('column', '?')
+        op = c.get('operator', '?')
+        val = c.get('value', '?')
+        descriptions.append(f"[{col} {op} {val}]")
+    
+    return " Y ".join(descriptions)
+
 def log_rule_changes(reason: str, old_rules: list, new_rules: list):
     """
     Registra cambios específicos en las reglas (comparando antes y después).
@@ -45,21 +60,26 @@ def log_rule_changes(reason: str, old_rules: list, new_rules: list):
     # 1. Nuevas Reglas
     for rule_id in new_map:
         if rule_id not in old_map:
+            rule = new_map[rule_id]
+            # CORRECCIÓN: Usar _format_conditions en lugar de buscar 'value' directo
+            conds_str = _format_conditions(rule.get('conditions', []))
+            
             log_general_change(
                 reason=reason,
                 action="Rule Created",
                 rule_id=rule_id,
-                change_summary=f"Nueva regla: {new_map[rule_id]['reason']} (Orden: {new_map[rule_id]['order']}, Valor: {new_map[rule_id]['value']})"
+                change_summary=f"Nueva regla: {rule.get('reason', 'Sin nombre')} (Prio: {rule.get('priority')}, Conds: {conds_str})"
             )
 
     # 2. Reglas Eliminadas
     for rule_id in old_map:
         if rule_id not in new_map:
+            rule = old_map[rule_id]
             log_general_change(
                 reason=reason,
                 action="Rule Deleted",
                 rule_id=rule_id,
-                change_summary=f"Regla eliminada: {old_map[rule_id]['reason']}"
+                change_summary=f"Regla eliminada: {rule.get('reason', 'Sin nombre')}"
             )
 
     # 3. Reglas Modificadas
@@ -68,17 +88,23 @@ def log_rule_changes(reason: str, old_rules: list, new_rules: list):
             old_rule = old_map[rule_id]
             new_rule = new_map[rule_id]
             changes = []
-            keys_to_compare = ["enabled", "order", "type", "value", "priority", "reason"]
+            
+            # Claves a comparar (incluyendo 'conditions')
+            keys_to_compare = ["enabled", "order", "priority", "reason", "conditions"]
+            
             for key in keys_to_compare:
-                if str(old_rule.get(key, "")) != str(new_rule.get(key, "")):
-                    changes.append(f"{key}: '{old_rule.get(key)}' -> '{new_rule.get(key)}'")
+                val_old = str(old_rule.get(key, ""))
+                val_new = str(new_rule.get(key, ""))
+                
+                if val_old != val_new:
+                    changes.append(f"{key}: '{val_old}' -> '{val_new}'")
             
             if changes:
                 log_general_change(
                     reason=reason,
                     action="Rule Modified",
                     rule_id=rule_id,
-                    change_summary=f"Regla '{new_rule['reason']}': " + "; ".join(changes)
+                    change_summary=f"Regla '{new_rule.get('reason')}' modif: " + "; ".join(changes)
                 )
 
 def get_audit_log_excel() -> bytes:

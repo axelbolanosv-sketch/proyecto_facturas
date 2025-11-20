@@ -1,8 +1,7 @@
 # modules/chatbot_logic.py
 """
-Lógica del Chatbot 3.0: Enfoque de "Escaneo de Datos".
-En lugar de analizar gramática, escaneamos la frase buscando coincidencias
-directas con los valores únicos existentes en el DataFrame.
+Lógica del Chatbot 4.0: Ahora con CAPACIDAD VISUAL.
+Devuelve datos estructurados para generar gráficos si el usuario lo pide.
 """
 
 import streamlit as st
@@ -12,100 +11,105 @@ import re
 from difflib import get_close_matches
 from modules.translator import get_text, translate_column
 
-# --- 1. UTILIDADES DE LIMPIEZA ---
+# --- 1. UTILIDADES ---
 
 def normalize_token(text: str) -> str:
-    """Limpia una palabra para comparación (minúsculas, sin acentos)."""
+    """Limpia una palabra para comparación."""
     if not isinstance(text, str): return str(text).lower()
     text = text.lower()
     text = ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
-    text = re.sub(r'[^a-z0-9]', '', text) # Solo alfanuméricos
+    text = re.sub(r'[^a-z0-9]', '', text)
     return text
 
 def get_stopwords():
-    """Palabras que el bot debe ignorar completamente."""
     return {
         "el", "la", "los", "las", "un", "una", "de", "del", "por", "para", "con", 
-        "y", "o", "que", "en", "a", "al", "se", "es", "son", "mis", "mi", "tu", 
-        "facturas", "factura", "datos", "registros", "filas", "valor", "igual", 
-        "como", "donde", "sea", "tenga", "muestrame", "dame", "ver", "quiero", 
-        "buscar", "filtrar", "filtra", "busca", "traeme", "show", "filter", "get",
-        "find", "search", "invoice", "invoices", "list", "lista", "tabla"
+        "y", "o", "que", "en", "a", "al", "mis", "mi", "tu", "facturas", "datos", 
+        "valor", "igual", "como", "donde", "sea", "tenga", "muestrame", "dame", 
+        "ver", "quiero", "buscar", "filtrar", "filtra", "busca", "traeme", "show", 
+        "grafica", "grafico", "distribucion", "plot", "chart" # Añadimos palabras de gráfico a stopwords para limpieza
     }
 
-# --- 2. CEREBRO DE BÚSQUEDA ---
-
 def find_value_in_data(tokens: list, data_dict: dict) -> tuple:
-    """
-    Recorre los tokens del mensaje y busca si alguno coincide con un valor real
-    en nuestras opciones de autocompletado.
-    
-    Returns: (Columna_Encontrada, Valor_Real_Encontrado) o (None, None)
-    """
-    best_match_score = 0.0
-    best_col = None
-    best_val = None
-
-    # Aplanamos el diccionario para búsqueda rápida: { "valor_normalizado": ("Columna", "ValorReal") }
-    # Esto es intensivo, pero con <10k facturas es instantáneo.
+    """Busca coincidencias en el diccionario de datos."""
     lookup_map = {}
     for col, values in data_dict.items():
         for v in values:
             norm_v = normalize_token(str(v))
-            if len(norm_v) > 2: # Ignorar valores muy cortos
-                # Guardamos tupla: (ColumnaReal, ValorReal)
-                # Ojo: Si un valor existe en 2 columnas, esto sobrescribe (generalmente aceptable)
+            if len(norm_v) > 2:
                 lookup_map[norm_v] = (col, v)
 
-    # 1. Búsqueda Exacta o Parcial (substring)
     for token in tokens:
-        if len(token) < 3: continue # Saltar palabras cortas
-        
-        # Caso A: Coincidencia Exacta
-        if token in lookup_map:
-            return lookup_map[token]
-            
-        # Caso B: Coincidencia Parcial (ej: "barcel" en "barcel s.a.")
+        if len(token) < 3: continue
+        if token in lookup_map: return lookup_map[token]
         for key_val, (real_col, real_val) in lookup_map.items():
-            if token in key_val: # Si el usuario escribió "barcel" y existe "grupo barcel"
-                return (real_col, real_val)
+            if token in key_val: return (real_col, real_val)
 
-    # 2. Búsqueda Difusa (Fuzzy) si no hubo exacta
-    # Juntamos los tokens clave en una frase para ver si se parece a algo
-    # (Esto ayuda si el usuario escribió "pendient" en lugar de "pendiente")
     all_keys = list(lookup_map.keys())
     for token in tokens:
         if len(token) < 4: continue
         matches = get_close_matches(token, all_keys, n=1, cutoff=0.75)
-        if matches:
-            return lookup_map[matches[0]]
+        if matches: return lookup_map[matches[0]]
 
     return None, None
 
-# --- 3. PROCESADOR PRINCIPAL ---
+# --- 2. PROCESADOR PRINCIPAL ---
 
-def process_user_message(message: str, df: pd.DataFrame, lang: str) -> tuple[str, bool]:
+def process_user_message(message: str, df: pd.DataFrame, lang: str) -> tuple[str, bool, dict]:
     """
-    Procesa el mensaje con lógica de escaneo de datos.
+    Retorna: (Texto_Respuesta, Rerun_Needed, Datos_Grafico)
+    Datos_Grafico es un dict o None: {'type': 'bar', 'data': pd.Series, 'title': str}
     """
-    # 1. Normalización Inicial
     raw_msg = normalize_token(message)
-    
-    # 2. Detección de Comandos Básicos (Hardcoded Intents)
+    chart_data = None # Por defecto no hay gráfico
+
+    # --- INTENCIÓN: GRÁFICOS (NUEVO) ---
+    keywords_chart = ["grafica", "grafico", "distribucion", "chart", "plot", "visualiza", "barras", "pastel"]
+    if any(k in raw_msg for k in keywords_chart):
+        # Intentar deducir qué columna graficar
+        # Prioridad: Status, Vendor, Priority, Pay Group
+        target_col = None
+        
+        # Buscar si el usuario mencionó una columna explícita
+        cols_map = {normalize_token(translate_column(lang, c)): c for c in df.columns}
+        for col_norm, col_real in cols_map.items():
+            if col_norm in raw_msg:
+                target_col = col_real
+                break
+        
+        # Si no mencionó columna, pero pide gráfico, sugerimos o usamos una por defecto interesante
+        if not target_col:
+            if "estado" in raw_msg or "status" in raw_msg: target_col = "Status"
+            elif "proveedor" in raw_msg or "vendor" in raw_msg: target_col = "Vendor Name"
+            elif "prioridad" in raw_msg or "priority" in raw_msg: target_col = "Priority"
+        
+        if target_col and target_col in df.columns:
+            # Calcular distribución
+            counts = df[target_col].value_counts().head(10) # Top 10 para no saturar
+            chart_data = {
+                "type": "bar",
+                "data": counts,
+                "title": f"Top 10 - {translate_column(lang, target_col)}",
+                "x_label": translate_column(lang, target_col),
+                "y_label": "Cantidad"
+            }
+            return f"📊 Aquí tienes la distribución por **{translate_column(lang, target_col)}**.", False, chart_data
+        else:
+            return "Para generar un gráfico, dime qué columna quieres ver (ej: 'Gráfico de Estado' o 'Distribución de Proveedores').", False, None
+
+    # --- INTENCIONES BÁSICAS ---
     keywords_help = ["ayuda", "help", "hacer", "funciones", "hola", "manual", "opciones"]
     if any(k in raw_msg for k in keywords_help):
-        return get_text(lang, "chat_help_message"), False
+        return get_text(lang, "chat_help_message"), False, None
 
     keywords_reset = ["reset", "limpiar", "borrar", "quitar", "reiniciar", "inicio", "todo"]
     if any(k in raw_msg for k in keywords_reset):
         st.session_state.filtros_activos = []
-        return get_text(lang, "chat_response_reset"), True
+        return get_text(lang, "chat_response_reset"), True, None
 
-    keywords_count = ["cuantas", "cantidad", "numero", "total", "count", "size"] # "total" es ambiguo, cuidado
-    # Si dice "total monto" es suma, si dice "total facturas" es conteo.
-    # Simplificación: si dice "cuantas" o "numero" es count.
-    if any(k in raw_msg for k in ["cuantas", "cantidad", "numero", "count"]):
-        return get_text(lang, "chat_response_count").format(n=len(df)), False
+    keywords_count = ["cuantas", "cantidad", "numero", "total", "count", "size"]
+    if any(k in raw_msg for k in keywords_count) and not "monto" in raw_msg:
+        return get_text(lang, "chat_response_count").format(n=len(df)), False, None
 
     keywords_sum = ["suma", "sumar", "monto", "dinero", "amount", "precio", "costo"]
     if any(k in raw_msg for k in keywords_sum):
@@ -113,38 +117,24 @@ def process_user_message(message: str, df: pd.DataFrame, lang: str) -> tuple[str
         total_val = 0.0
         if col_total in df.columns:
             total_val = pd.to_numeric(df[col_total], errors='coerce').fillna(0).sum()
-        return get_text(lang, "chat_response_total").format(n=f"{total_val:,.2f}"), False
+        return get_text(lang, "chat_response_total").format(n=f"{total_val:,.2f}"), False, None
 
-    # --- 3. LÓGICA DE FILTRADO (DATA DRIVEN) ---
-    
-    # Tokenizamos el mensaje original para mantener estructura
-    # Normalizamos cada palabra y quitamos stopwords
+    # --- FILTRADO ---
     stopwords = get_stopwords()
     words = message.split()
-    clean_tokens = []
-    
-    for w in words:
-        norm_w = normalize_token(w)
-        if norm_w not in stopwords and len(norm_w) > 1:
-            clean_tokens.append(norm_w)
-            
-    if not clean_tokens:
-         return get_text(lang, "chat_response_unknown"), False
+    clean_tokens = [normalize_token(w) for w in words if normalize_token(w) not in stopwords and len(normalize_token(w)) > 1]
 
-    # Buscamos en el diccionario de datos
+    if not clean_tokens:
+         return get_text(lang, "chat_response_unknown"), False, None
+
     data_dict = st.session_state.get('autocomplete_options', {})
     found_col, found_val = find_value_in_data(clean_tokens, data_dict)
     
     if found_col and found_val:
-        # Verificar si ya existe el filtro
         exists = any(f['columna'] == found_col and f['valor'] == found_val for f in st.session_state.filtros_activos)
-        if exists:
-            return "⚠️ Ese filtro ya está aplicado.", False
-            
+        if exists: return "⚠️ Ese filtro ya está aplicado.", False, None
         st.session_state.filtros_activos.append({"columna": found_col, "valor": found_val})
-        # Traducir nombre de columna para respuesta amigable
         col_ui = translate_column(lang, found_col)
-        return get_text(lang, "chat_response_filter_applied").format(col=col_ui, val=found_val), True
+        return get_text(lang, "chat_response_filter_applied").format(col=col_ui, val=found_val), True, None
 
-    # Si llegamos aquí, no entendimos nada
-    return get_text(lang, "chat_response_unknown"), False
+    return get_text(lang, "chat_response_unknown"), False, None
