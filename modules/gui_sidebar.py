@@ -76,7 +76,39 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
     up_files = st.sidebar.file_uploader(get_text(lang, 'uploader_label'), type=["xlsx"], accept_multiple_files=True, on_change=clear_state_and_prepare_reload)
 
     if df_loaded:
-        # --- FILTROS ---
+        # --- NUEVO: FILTRADO POR REGLA (Especial para Chatbot) ---
+        if 'Priority_Reason' in st.session_state.df_staging.columns:
+            st.sidebar.markdown("### 🔍 Filtrar por Regla")
+            
+            # Obtener reglas únicas presentes en los datos
+            reasons = sorted(list(st.session_state.df_staging['Priority_Reason'].unique()))
+            # Asegurar que "Sin Regla" esté al principio si existe
+            if "Sin Regla Asignada" in reasons:
+                reasons.remove("Sin Regla Asignada")
+                reasons = ["Sin Regla Asignada"] + reasons
+                
+            # Dropdown
+            selected_rule = st.sidebar.selectbox(
+                "Seleccione una regla aplicada:",
+                ["(Todos)"] + reasons,
+                key="filter_by_rule_select"
+            )
+            
+            # Aplicar filtro si no es Todos
+            if selected_rule != "(Todos)":
+                # Usamos el sistema de filtros existente añadiéndolo a la lista si no está
+                rule_col_trans = translate_column(lang, "Priority_Reason") # O el nombre interno
+                # Como Priority_Reason puede ser interna, la forzamos
+                # Limpiamos filtros previos de regla para evitar conflictos
+                st.session_state.filtros_activos = [f for f in st.session_state.filtros_activos if f['columna'] != 'Priority_Reason']
+                st.session_state.filtros_activos.append({"columna": "Priority_Reason", "valor": selected_rule})
+            else:
+                # Si selecciona Todos, removemos el filtro de regla
+                if any(f['columna'] == 'Priority_Reason' for f in st.session_state.filtros_activos):
+                     st.session_state.filtros_activos = [f for f in st.session_state.filtros_activos if f['columna'] != 'Priority_Reason']
+                     st.rerun()
+
+        # --- FILTROS ESTÁNDAR ---
         st.sidebar.markdown(f"### {get_text(lang, 'add_filter_header')}")
         auto_opts = st.session_state.autocomplete_options
         cols_visual = []
@@ -159,7 +191,6 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
         # --- GESTOR DE LISTAS Y ANALIZADOR ---
         st.sidebar.markdown("---")
         with st.sidebar.expander(get_text(lang, 'manage_lists_expander'), expanded=False):
-            # 1. Lista completa para que el usuario pueda elegir CUALQUIERA
             list_visual_all = []
             for c in cols_ui:
                 cen = map_en.get(c, c)
@@ -172,9 +203,7 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
             col_list_clean = col_list_visual.replace(" 📋", "")
             col_list_en = map_en.get(col_list_clean, col_list_clean)
             
-            # 2. Lógica condicional
             if col_list_en in st.session_state.autocomplete_options and st.session_state.autocomplete_options[col_list_en]:
-                # CASO A: YA TIENE LISTA
                 curr_opts = st.session_state.autocomplete_options[col_list_en]
                 st.success(f"✅ Autocompletado activo ({len(curr_opts)} opciones).")
                 
@@ -190,7 +219,6 @@ def render_sidebar(lang, df_loaded, cols_ui, map_en, cols_en):
                     st.session_state.autocomplete_options[col_list_en] = [x for x in curr_opts if x not in del_ops]
                     st.rerun()
             else:
-                # CASO B: NO TIENE LISTA -> OFRECER ANÁLISIS
                 st.warning(get_text(lang, 'no_list_warning'))
                 st.info(get_text(lang, 'analyze_info'))
                 

@@ -8,61 +8,73 @@ from modules.filters import aplicar_filtros_dinamicos
 
 def render_chatbot(lang: str, df_staging):
     """
-    Interfaz del chatbot 6.0 con Historial Colapsable y Acciones Reales.
+    Interfaz del chatbot 7.0:
+    - Historial Renombrable
+    - Chips de Análisis (Incluyendo Top Global)
+    - Acciones de Anomalías
     """
-    # Inicializar historial con estructura para gráficos y acciones
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
-        # Mensaje inicial (sin expander)
         st.session_state.chat_history.append({
             "role": "assistant", 
             "content": "start_chat_msg", 
             "chart": None, 
-            "actions": []
+            "actions": [],
+            "custom_label": None # Nuevo campo para el nombre personalizado
         })
 
     with st.expander(get_text(lang, "chat_title"), expanded=False):
         
-        # --- 1. RENDERIZADO DE HISTORIAL (Colapsable) ---
-        # Lógica: Agrupar mensajes en bloques (Usuario + Asistente)
-        # Los bloques antiguos van en expanders cerrados. El último bloque queda abierto.
-        
+        # --- 1. RENDERIZADO DE HISTORIAL (Editable y Colapsable) ---
         history = st.session_state.chat_history
-        
-        # Identificar índices de mensajes de usuario para agrupar
         user_indices = [i for i, msg in enumerate(history) if msg['role'] == 'user']
         
-        # Renderizar mensaje inicial (siempre visible o en su propio bloque)
+        # Mensaje inicial
         if history and history[0]['role'] == 'assistant':
-            # El mensaje de bienvenida no se colapsa o se pone al principio
             msg = history[0]
             content = msg.get("content", "")
             display_text = get_text(lang, content) if content == "start_chat_msg" else content
             with st.chat_message("assistant"):
                 st.markdown(display_text)
 
-        # Renderizar pares de interacción (Usuario -> Asistente)
-        # Si hay mensajes de usuario, los procesamos
+        # Bloques de interacción
         if user_indices:
             last_user_idx = user_indices[-1]
             
             for i in user_indices:
                 is_last_interaction = (i == last_user_idx)
                 
-                # Título del bloque
-                user_msg_content = history[i]['content']
-                short_title = (user_msg_content[:40] + '...') if len(user_msg_content) > 40 else user_msg_content
-                expander_label = f"🗣️ {short_title}"
+                # Lógica del Título del Expander
+                user_msg = history[i]
+                if user_msg.get("custom_label"):
+                    expander_label = f"📂 {user_msg['custom_label']}"
+                else:
+                    content_preview = user_msg['content'][:40] + "..." if len(user_msg['content']) > 40 else user_msg['content']
+                    expander_label = f"🗣️ {content_preview}"
                 
-                # El último mensaje se muestra abierto (expanded=True), los anteriores cerrados
+                # Renderizar Expander
                 with st.expander(expander_label, expanded=is_last_interaction):
+                    
+                    # --- NUEVO: CAMPO PARA RENOMBRAR ---
+                    c_edit, _ = st.columns([0.7, 0.3])
+                    new_label = c_edit.text_input(
+                        "🏷️ Renombrar esta consulta:", 
+                        value=user_msg.get("custom_label", ""), 
+                        placeholder="Ej: Análisis de Anomalías",
+                        key=f"rename_{i}"
+                    )
+                    
+                    if new_label != user_msg.get("custom_label", ""):
+                        history[i]["custom_label"] = new_label
+                        st.rerun()
+                    
+                    st.markdown("---")
                     
                     # 1. Mensaje Usuario
                     with st.chat_message("user"):
-                        st.markdown(history[i]['content'])
+                        st.markdown(user_msg['content'])
                     
-                    # 2. Mensaje(s) Asistente siguientes (hasta el próximo usuario)
-                    # Normalmente es 1 respuesta, pero el código es robusto por si hay más
+                    # 2. Respuestas del Asistente
                     next_user = user_indices[user_indices.index(i) + 1] if user_indices.index(i) + 1 < len(user_indices) else len(history)
                     
                     for j in range(i + 1, next_user):
@@ -71,66 +83,65 @@ def render_chatbot(lang: str, df_staging):
                             with st.chat_message("assistant"):
                                 st.markdown(bot_msg['content'])
                                 
-                                # Gráfico
                                 if bot_msg.get("chart"):
                                     c_info = bot_msg["chart"]
                                     st.caption(f"📈 {c_info.get('title','')}")
                                     st.bar_chart(c_info["data"], color="#004A99")
                                 
-                                # ACCIONES (BOTONES REALES)
                                 if bot_msg.get("actions"):
                                     for idx, act in enumerate(bot_msg["actions"]):
-                                        # Clave única para el botón basada en el índice del mensaje
                                         btn_key = f"act_{j}_{idx}"
                                         if st.button(act['label'], key=btn_key):
-                                            # EJECUTAR ACCIÓN
                                             if act['type'] == 'filter_numeric':
-                                                # Caso especial para reglas manuales complejas como anomalías
-                                                # Añadimos una "regla temporal" o un filtro avanzado
-                                                # Por simplicidad, usamos el sistema de reglas de prioridad para marcar
-                                                pass 
-                                                # OJO: El sistema de filtros actual es simple (string contains).
-                                                # Para soportar "> valor", necesitamos un truco o mejorar filtros.
-                                                # TRUCO RÁPIDO: Crear una regla de prioridad temporal
+                                                # Crea una regla de prioridad para filtrar
+                                                new_rule_id = f"auto_{int(time.time())}"
                                                 st.session_state.priority_rules.append({
-                                                    "id": f"temp_{int(time.time())}",
-                                                    "enabled": True, "order": 1, 
+                                                    "id": new_rule_id,
+                                                    "enabled": True, "order": 5, 
                                                     "priority": "🚩 Maxima Prioridad", 
-                                                    "reason": "Filtro Anomalía Chatbot",
+                                                    "reason": "Filtro Anomalía Chatbot", # Nombre clave para el filtro
                                                     "conditions": [{"column": act['col'], "operator": act['op'], "value": act['val']}]
                                                 })
-                                                st.toast("✅ Filtro de anomalía aplicado como Regla de Prioridad.")
+                                                st.toast("✅ Regla de anomalía aplicada. Usa el filtro lateral para verla.")
                                                 st.rerun()
                                             
                                             elif act['type'] == 'filter_exact':
                                                 st.session_state.filtros_activos.append({"columna": act['col'], "valor": act['val']})
                                                 st.rerun()
 
-        # --- 2. CHIPS / SUGERENCIAS RÁPIDAS ---
+        # --- 2. CHIPS / BOTONES (Restaurados y Mejorados) ---
         st.divider()
-        st.caption("Sugerencias de Análisis:")
-        c1, c2, c3, c4, c5 = st.columns(5)
+        st.markdown("###### 💡 Acciones Rápidas:")
+        
+        # Fila 1: Análisis (Incluye tu Top Global)
+        c1, c2, c3 = st.columns(3)
         suggestion = None
         
-        # Botones de Gráficos por Columna (Lo que pediste)
-        if c1.button("📈 Estatus", use_container_width=True): suggestion = "Gráfico de Estado"
-        if c2.button("📈 Proveedor", use_container_width=True): suggestion = "Gráfico de Proveedores"
-        if c3.button("📈 Prioridad", use_container_width=True): suggestion = "Gráfico de Prioridad"
+        if c1.button("🕵️ Detectar Anomalías", use_container_width=True):
+            suggestion = "Analiza anomalías en los montos"
         
-        # Botones de Inteligencia
-        if c4.button("🕵️ Anomalías", use_container_width=True): suggestion = "Detectar anomalías en montos"
-        if c5.button("🔄 Reset", use_container_width=True): suggestion = "Resetear todo"
+        # ¡AQUÍ ESTÁ TU BOTÓN DE TOP GLOBAL!
+        if c2.button("🏆 Top Proveedores", use_container_width=True):
+            suggestion = "Muestrame el Top de proveedores"
+            
+        if c3.button("📝 Resumen Ejecutivo", use_container_width=True):
+            suggestion = "Dame un resumen ejecutivo"
+
+        # Fila 2: Gráficos y Gestión
+        c4, c5, c6, c7 = st.columns(4)
+        if c4.button("📈 Estatus", use_container_width=True): suggestion = "Gráfico de Estado"
+        if c5.button("📈 Prioridad", use_container_width=True): suggestion = "Gráfico de Prioridad"
+        if c6.button("🔄 Reset", use_container_width=True): suggestion = "Resetear todo"
+        # Un botón extra útil
+        if c7.button("❓ Ayuda", use_container_width=True): suggestion = "Ayuda"
 
         # --- 3. INPUT USUARIO ---
         user_input = st.chat_input(get_text(lang, "chat_placeholder"))
         final_prompt = suggestion if suggestion else user_input
 
         if final_prompt:
-            # Guardar usuario
-            st.session_state.chat_history.append({"role": "user", "content": final_prompt})
+            st.session_state.chat_history.append({"role": "user", "content": final_prompt, "custom_label": None})
             
-            # Procesar (sin renderizar aquí, se renderiza en el rerun por el bucle de arriba)
-            # Pero necesitamos mostrar el spinner una vez
             with st.chat_message("user"):
                 st.markdown(final_prompt)
                 
@@ -142,15 +153,12 @@ def render_chatbot(lang: str, df_staging):
                     if st.session_state.filtros_activos:
                         df_context = aplicar_filtros_dinamicos(df_staging, st.session_state.filtros_activos)
 
-                    # Obtener respuesta con acciones
                     resp_txt, rerun, chart, actions = process_user_message(final_prompt, df_context, lang)
                     
-                    # Guardar en historial
                     st.session_state.chat_history.append({
                         "role": "assistant", 
                         "content": resp_txt, 
                         "chart": chart,
                         "actions": actions
                     })
-            
             st.rerun()
