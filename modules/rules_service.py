@@ -149,7 +149,12 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
     # 4. Preservar ingresos manuales (Override del Usuario)
     # Si el motor NO asignó regla, pero el usuario tenía un valor manual válido, restaurarlo.
     # Esto permite que la edición manual "gane" a menos que una regla explícita la sobrescriba después.
-    manual_priorities = ["Minima", "Media", "Alta", "🚩 Maxima Prioridad"]
+    
+    # --- CAMBIO AQUÍ: Soporte Bilingüe ---
+    manual_priorities = [
+        "Minima", "Media", "Alta", "🚩 Maxima Prioridad",  # Español
+        "Low", "Medium", "High", "🚩 Max Priority"         # Inglés
+    ]
     
     mask_no_rule_applied = (df['Priority_Reason'] == "Sin Regla Asignada")
     mask_had_manual_value = df['Priority'].isin(manual_priorities) & (df['Priority'] != "")

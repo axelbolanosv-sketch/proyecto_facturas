@@ -68,7 +68,17 @@ def render_rules_editor(cols, auto_opts):
         st.session_state.new_rule_name = r_name
         
         c1, c2 = st.columns(2)
-        r_prio = c1.selectbox(get_text(lang, 'rule_prio_lbl'), ["🚩 Maxima Prioridad", "Alta", "Media", "Minima"], index=1)
+        
+        # --- CAMBIO: Opciones Traducibles ---
+        prio_options = [
+            get_text(lang, 'prio_max'),
+            get_text(lang, 'prio_high'),
+            get_text(lang, 'prio_medium'),
+            get_text(lang, 'prio_low')
+        ]
+        # Mantenemos índice 1 como default ("Alta" / "High")
+        r_prio = c1.selectbox(get_text(lang, 'rule_prio_lbl'), prio_options, index=1)
+        
         r_order = c2.number_input(get_text(lang, 'rule_order_lbl'), min_value=1, value=50, help=get_text(lang, 'help_order'))
         
         st.markdown(f"#### {get_text(lang, 'rules_step_cond')}")

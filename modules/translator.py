@@ -1,6 +1,5 @@
 # modules/translator.py
-# VERSIÓN 16.0: ARCHIVO MAESTRO RESTAURADO Y COMPLETO
-# Incluye: General, Filtros, KPIs, Vistas, Sidebar, Config, Listas, Reglas y Chatbot.
+# VERSIÓN 17.0: SOPORTE PARA PRIORIDADES TRADUCIBLES
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS (Base de Datos -> UI) ---
 COLUMN_TRANSLATIONS = {
@@ -50,6 +49,12 @@ COLUMN_TRANSLATIONS = {
 # --- DICCIONARIO DE TEXTOS DE LA INTERFAZ (UI) ---
 LANGUAGES = {
     "es": {
+        # --- PRIORIDADES (VALORES) ---
+        "prio_max": "🚩 Maxima Prioridad",
+        "prio_high": "Alta",
+        "prio_medium": "Media",
+        "prio_low": "Minima",
+
         # --- 1. GENERAL Y TÍTULOS ---
         "title": "Buscador de Facturas Dinámico",
         "subtitle": "Cargue CUALQUIER archivo Excel (.xlsx) y añada múltiples filtros.",
@@ -250,17 +255,14 @@ LANGUAGES = {
         "btn_delete_rule": "Eliminar",
         "btn_close_editor": "Cerrar Editor",
 
-# --- 10. CHATBOT / ASISTENTE (EXPANDIDO) ---
+        # --- 10. CHATBOT / ASISTENTE ---
         "chat_title": "💬 Asistente Virtual",
         "chat_placeholder": "Escribe aquí (ej: 'filtra por ACME', 'ayuda')...",
         "start_chat_msg": "¡Hola! Soy tu asistente virtual. ¿En qué puedo ayudarte hoy? Puedo contar facturas, sumar montos o filtrar por ti.",
-        
         "chat_response_count": "📊 He encontrado **{n}** facturas en la vista actual.",
         "chat_response_total": "💰 La suma total del monto en la vista actual es **${n}**.",
         "chat_response_filter_applied": "✅ He aplicado el filtro: **{col} contiene '{val}'**.",
         "chat_response_reset": "🔄 He limpiado todos los filtros. Muestro la tabla original.",
-        
-        # NUEVO: Mensaje de Ayuda
         "chat_help_message": """
         🤖 **¿En qué puedo ayudarte?** Aquí tienes algunos ejemplos de lo que puedo hacer:
 
@@ -278,11 +280,16 @@ LANGUAGES = {
             * *"Borrar filtros"*
             * *"Reiniciar búsqueda"*
         """,
-        
         "chat_response_unknown": "🤔 No estoy seguro de entender eso. Intenta preguntarme **'¿qué puedes hacer?'** para ver mis funciones.",
         "chat_thinking": "Procesando tu solicitud..."
     },
     "en": {
+        # --- PRIORITIES (VALUES) ---
+        "prio_max": "🚩 Max Priority",
+        "prio_high": "High",
+        "prio_medium": "Medium",
+        "prio_low": "Low",
+
         # --- 1. GENERAL AND TITLES ---
         "title": "Dynamic Invoice Search",
         "subtitle": "Upload ANY Excel file (.xlsx) and add multiple filters.",
@@ -478,17 +485,14 @@ LANGUAGES = {
         "btn_delete_rule": "Delete",
         "btn_close_editor": "Close Editor",
 
-       # --- 10. CHATBOT / ASSISTANT (EXPANDED) ---
+        # --- 10. CHATBOT / ASSISTANT ---
         "chat_title": "💬 Virtual Assistant",
         "chat_placeholder": "Type here (e.g. 'filter by ACME', 'help')...",
         "start_chat_msg": "Hello! I'm your virtual assistant. How can I help you today? I can count invoices, sum amounts, or filter for you.",
-        
         "chat_response_count": "📊 I found **{n}** invoices in the current view.",
         "chat_response_total": "💰 The total sum of the amount in the current view is **${n}**.",
         "chat_response_filter_applied": "✅ Filter applied: **{col} contains '{val}'**.",
         "chat_response_reset": "🔄 I have cleared all filters. Showing original table.",
-
-        # NEW: Help Message
         "chat_help_message": """
         🤖 **How can I help?** Here are some examples of what I can do:
 
@@ -506,7 +510,6 @@ LANGUAGES = {
             * *"Clear filters"*
             * *"Reset search"*
         """,
-
         "chat_response_unknown": "🤔 I'm not sure I understood that. Try asking **'what can you do?'** to see my capabilities.",
         "chat_thinking": "Processing your request..."
     }

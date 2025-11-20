@@ -1,4 +1,4 @@
-# modules/utils.py
+# modules/gui_utils.py
 import streamlit as st
 import pandas as pd
 import io
@@ -29,10 +29,10 @@ def initialize_session_state():
     if 'show_rules_editor' not in st.session_state: st.session_state.show_rules_editor = False
     if 'config_file_processed' not in st.session_state: st.session_state.config_file_processed = False
 
-    # --- NUEVO: Estado del Chatbot ---
+    # Estado del Chatbot
     if 'chat_history' not in st.session_state: 
         st.session_state.chat_history = [
-            {"role": "assistant", "content": "start_chat_msg"} # Clave para traducción
+            {"role": "assistant", "content": "start_chat_msg", "chart": None}
         ]
 
 def load_custom_css():
@@ -66,13 +66,19 @@ def load_custom_css():
         [data-testid="stDataEditor"] [data-kind="cell"]:has(> .glide-cell-div:empty) { background-color: #FFF3B3 !important; }
         [data-testid="stDataEditor"] [data-kind="cell"] > .glide-cell-div > .glide-text-content[data-content="0"] { background-color: #FFF3B3 !important; color: #b0a06c; }
         
-        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="Maxima Prioridad"]), 
-        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="🚩 Maxima Prioridad"]) { 
+        /* --- CSS PARA RESALTAR FILA DE ALTA PRIORIDAD (Soporte ES/EN) --- */
+        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="Maxima Prioridad"]),
+        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="🚩 Maxima Prioridad"]),
+        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="Max Priority"]),
+        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="🚩 Max Priority"]) { 
             background-image: linear-gradient(to right, #FFDDDD, #FFDDDD) !important; 
             color: #660000 !important; 
         }
+        
         [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="Maxima Prioridad"]), 
-        [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="🚩 Maxima Prioridad"]) { 
+        [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="🚩 Maxima Prioridad"]),
+        [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="Max Priority"]),
+        [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="🚩 Max Priority"]) { 
             font-weight: 800 !important; 
             background-color: #FFC0C0 !important; 
             color: black !important; 
@@ -147,7 +153,10 @@ def load_and_process_files(uploaded_files, lang):
             for col in ["Vendor Name", "Status", "Assignee", "Priority", "Pay Group", "Operating Unit Name", "Document Type"]:
                 if col in df_processed.columns:
                     vals = sorted(list(df_processed[col].astype(str).unique()))
-                    if col == "Priority": vals = sorted(list(set(vals + ["🚩 Maxima Prioridad", "Minima", "Media", "Alta"])))
+                    # Añadir opciones base de prioridad (Bilingüe)
+                    if col == "Priority": 
+                        prio_base = ["🚩 Maxima Prioridad", "Minima", "Media", "Alta", "🚩 Max Priority", "Low", "Medium", "High"]
+                        vals = sorted(list(set(vals + prio_base)))
                     autocomplete_options[col] = vals
             st.session_state.autocomplete_options = autocomplete_options
             
@@ -166,6 +175,5 @@ def clear_state_and_prepare_reload():
     st.session_state.df_staging = None
     st.session_state.audit_log = [] 
     st.session_state.config_file_processed = False
-    # Reiniciar chat si se carga nuevo archivo
     if 'chat_history' in st.session_state:
-        st.session_state.chat_history = [{"role": "assistant", "content": "start_chat_msg"}]
+        st.session_state.chat_history = [{"role": "assistant", "content": "start_chat_msg", "chart": None}]
