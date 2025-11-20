@@ -1,5 +1,5 @@
 # app.py
-# VERSIÓN FINAL: COORDINADOR PRINCIPAL
+# VERSIÓN FINAL: COORDINADOR PRINCIPAL CON TRADUCCIÓN DE VISTA
 
 import streamlit as st
 import pandas as pd
@@ -18,10 +18,9 @@ st.set_page_config(layout="wide", page_title="Gestor de Facturas")
 load_custom_css()
 
 # Hotkeys Globales
-# AQUI ESTABA EL ERROR: Faltaba registrar el combo con Shift
 hotkeys.activate([
     hotkeys.hk("save_draft", "s", ctrl=True, prevent_default=True),
-    hotkeys.hk("commit_changes", "s", ctrl=True, shift=True, prevent_default=True), # <--- NUEVO
+    hotkeys.hk("commit_changes", "s", ctrl=True, shift=True, prevent_default=True),
     hotkeys.hk("add_row", "i", ctrl=True, prevent_default=True),
     hotkeys.hk("revert_stable", "z", ctrl=True, prevent_default=True)
 ])
@@ -64,8 +63,9 @@ if st.session_state.df_staging is not None:
         render_kpi_dashboard(lang, df_res)
         st.markdown("---")
 
-        # 3. Selector Vista
-        view = st.radio("Vista:", [get_text(lang, 'view_type_detailed'), get_text(lang, 'view_type_grouped')], horizontal=True)
+        # 3. Selector Vista (TRADUCIDO)
+        view_label = get_text(lang, 'view_label') # "Vista:" o "View:"
+        view = st.radio(view_label, [get_text(lang, 'view_type_detailed'), get_text(lang, 'view_type_grouped')], horizontal=True)
 
         if view == get_text(lang, 'view_type_detailed'):
             render_detailed_view(lang, df_res, st.session_state.df_staging, map_en, cols_en)

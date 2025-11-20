@@ -1,7 +1,8 @@
 # modules/gui_views.py
-# VERSIÓN 12.1: TRADUCCIONES DE BOTONES APLICADAS
-# - Se mantienen todas las optimizaciones de Fragments y rendimiento.
-# - Se aplican traducciones a botones de descarga.
+# VERSIÓN 14.0: ARCHIVO COMPLETO Y RESTAURADO
+# - Se incluyen TODAS las funciones (Modales, Filtros, KPIs, Vistas).
+# - Se mantienen las optimizaciones de rendimiento (Fragments).
+# - Se mantienen las traducciones de botones y Hotkeys.
 
 import streamlit as st
 import pandas as pd
@@ -16,7 +17,7 @@ import streamlit_hotkeys as hotkeys
 # --- CONFIGURACIÓN DE RENDIMIENTO ---
 MAX_ROWS_FOR_TOOLTIPS = 1500 
 
-# --- MODAL BUSCAR Y REEMPLAZAR (Sin Cambios) ---
+# --- MODAL BUSCAR Y REEMPLAZAR ---
 @st.dialog("🔍 Buscar y Reemplazar")
 def modal_find_replace(col_map, lang):
     st.markdown("Esta herramienta buscará y reemplazará valores en la **Columna Objetivo**.")
@@ -227,16 +228,19 @@ def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_
         except:
             styled_data = df_disp
     else:
-        st.caption(f"🚀 Modo Rendimiento: Tooltips desactivados (> {MAX_ROWS_FOR_TOOLTIPS} filas).")
+        # TRADUCIDO
+        st.caption(get_text(lang, 'perf_mode_tooltips_off').format(n=MAX_ROWS_FOR_TOOLTIPS))
 
     c_sel_all, c_desel_all, _ = st.columns([0.15, 0.15, 0.7])
     
-    if c_sel_all.button("☑️ Todos", help="Seleccionar todo"):
+    # TRADUCIDO
+    if c_sel_all.button(get_text(lang, 'select_all_btn'), help="Select All"):
         st.session_state.pending_selection = True
         st.session_state.editor_key_ver += 1
         st.rerun()
         
-    if c_desel_all.button("⬜ Ninguno", help="Deseleccionar todo"):
+    # TRADUCIDO
+    if c_desel_all.button(get_text(lang, 'deselect_all_btn'), help="Select None"):
         st.session_state.pending_selection = False
         st.session_state.editor_key_ver += 1
         st.rerun()
@@ -250,6 +254,7 @@ def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_
         use_container_width=True
     )
 
+    # Callbacks
     def cb_add():
         idx = int(pd.to_numeric(st.session_state.df_staging.index, errors='coerce').max() + 1)
         row = {c: False if c=="Seleccionar" else "" for c in st.session_state.editor_state.columns}
@@ -314,6 +319,7 @@ def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_
     c4.button(get_text(lang, 'reset_changes_button'), on_click=cb_rev)
     if c5.button("🔍 Buscar/Reemplazar"): modal_find_replace(col_map, lang)
 
+    # HOTKEYS
     if hotkeys.pressed("save_draft"): cb_save()
     if hotkeys.pressed("commit_changes"): cb_com()
     if hotkeys.pressed("add_row"): cb_add()
@@ -325,15 +331,18 @@ def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_
 
 def render_detailed_view(lang, df_filtered, df_master, col_map, all_cols):
     cols_show = [c for c in st.session_state.columnas_visibles if c in df_filtered.columns]
-    if not cols_show: st.warning("Seleccione columnas."); return
+    if not cols_show: st.warning(get_text(lang, 'warning_select_cols')); return 
 
     prio_map = {"🚩 Maxima Prioridad": 4, "Maxima Prioridad": 4, "Alta": 3, "Media": 2, "Minima": 1}
-    sort_opt = st.radio("Ordenar:", ["Original", "🔼 Max-Min", "🔽 Min-Max"], horizontal=True)
+    
+    # TRADUCIDO
+    opts = [get_text(lang, 'sort_opt_original'), get_text(lang, 'sort_opt_max_min'), get_text(lang, 'sort_opt_min_max')]
+    sort_opt = st.radio(get_text(lang, 'sort_label'), opts, horizontal=True)
     st.markdown("---")
 
     df_v = df_filtered.copy()
-    if sort_opt != "Original" and 'Priority' in df_v.columns:
-        asc = (sort_opt == "🔽 Min-Max")
+    if sort_opt != get_text(lang, 'sort_opt_original') and 'Priority' in df_v.columns:
+        asc = (sort_opt == get_text(lang, 'sort_opt_min_max'))
         df_v['_s'] = df_v['Priority'].map(prio_map).fillna(0)
         scols = ['_s']
         sascs = [asc]
