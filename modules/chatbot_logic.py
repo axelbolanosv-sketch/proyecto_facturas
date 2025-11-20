@@ -1,7 +1,7 @@
 # modules/chatbot_logic.py
 """
-Lógica del Chatbot 5.0: MODO ANALISTA (Innovación).
-Incluye detección de anomalías, rankings y resúmenes ejecutivos.
+Lógica del Chatbot 6.0: ACCIONABLE Y VISUAL.
+Devuelve acciones concretas (filtros automáticos) y gráficos bajo demanda.
 """
 
 import streamlit as st
@@ -14,7 +14,6 @@ from modules.translator import get_text, translate_column
 # --- 1. UTILIDADES ---
 
 def normalize_token(text: str) -> str:
-    """Limpia una palabra para comparación."""
     if not isinstance(text, str): return str(text).lower()
     text = text.lower()
     text = ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
@@ -32,7 +31,6 @@ def get_stopwords():
     }
 
 def find_value_in_data(tokens: list, data_dict: dict) -> tuple:
-    """Busca coincidencias en el diccionario de datos."""
     lookup_map = {}
     for col, values in data_dict.items():
         for v in values:
@@ -57,68 +55,79 @@ def find_value_in_data(tokens: list, data_dict: dict) -> tuple:
 # --- 2. FUNCIONES DE INTELIGENCIA DE NEGOCIO ---
 
 def analyze_anomalies(df: pd.DataFrame):
-    """Detecta valores atípicos (Outliers) en el monto."""
+    """
+    Detecta valores atípicos y devuelve una ACCIÓN para filtrarlos.
+    """
     if 'Total' not in df.columns or df.empty:
-        return "No puedo analizar anomalías sin una columna 'Total' numérica.", None
+        return "No puedo analizar anomalías sin una columna 'Total' numérica.", None, []
     
-    # Convertir a numérico
     totals = pd.to_numeric(df['Total'], errors='coerce').fillna(0)
-    
-    # Definir anomalía: Mayor al percentil 95 (Top 5% más caro)
     threshold = totals.quantile(0.95)
     
-    if threshold == 0: return "Los montos son todos cero o no detecto variaciones.", None
+    if threshold == 0: return "Los montos son todos cero o no detecto variaciones.", None, []
     
     anomalies = df[totals > threshold]
     count = len(anomalies)
     
     msg = (f"🕵️ **Análisis de Anomalías:**\n\n"
-           f"He detectado **{count} facturas** con montos inusualmente altos (superiores a **${threshold:,.2f}**).\n"
-           f"Esto representa el top 5% de tus gastos actuales. ¿Deseas filtrarlas?")
+           f"He detectado **{count} facturas** sospechosas con montos superiores a **${threshold:,.2f}** "
+           f"(Top 5% del gasto).")
     
-    # Preparamos un gráfico de dispersión simple o histograma
     chart_data = {
         "type": "bar",
-        "data": anomalies['Total'].head(10), # Top 10 anomalías
+        "data": anomalies['Total'].head(10),
         "title": f"Top Anomalías (> ${threshold:,.0f})",
         "x_label": "Índice",
-        "y_label": "Monto Total"
+        "y_label": "Monto"
     }
-    return msg, chart_data
+    
+    # ACCIÓN SUGERIDA: Un botón para aplicar el filtro
+    actions = [{
+        "label": f"🌪️ Filtrar estas {count} facturas",
+        "type": "filter_numeric", # Tipo especial de acción
+        "col": "Total",
+        "op": ">",
+        "val": threshold
+    }]
+    
+    return msg, chart_data, actions
 
 def generate_top_vendors(df: pd.DataFrame):
-    """Genera un ranking de los proveedores que más dinero consumen."""
     if 'Vendor Name' not in df.columns or 'Total' not in df.columns:
-        return "Me faltan columnas (Vendor Name o Total) para hacer este ranking.", None
+        return "Me faltan columnas (Vendor Name o Total).", None, []
 
-    # Agrupar y sumar
-    # Asegurar numérico
     df_calc = df.copy()
     df_calc['Total'] = pd.to_numeric(df_calc['Total'], errors='coerce').fillna(0)
-    
     top_5 = df_calc.groupby('Vendor Name')['Total'].sum().nlargest(5)
     
-    if top_5.empty: return "No hay datos suficientes para el ranking.", None
+    if top_5.empty: return "No hay datos suficientes.", None, []
     
     top_name = top_5.index[0]
     top_val = top_5.iloc[0]
     
     msg = (f"🏆 **Ranking de Proveedores:**\n\n"
-           f"El proveedor #1 es **{top_name}** con un total de **${top_val:,.2f}**.\n"
-           f"Aquí tienes el Top 5 visualizado:")
+           f"El #1 es **{top_name}** (${top_val:,.2f}). Aquí tienes el Top 5:")
     
     chart_data = {
         "type": "bar",
         "data": top_5,
-        "title": "Top 5 Proveedores por Monto ($)",
+        "title": "Top 5 Proveedores ($)",
         "x_label": "Proveedor",
-        "y_label": "Monto Total"
+        "y_label": "Total"
     }
-    return msg, chart_data
+    
+    # Acción: Filtrar por el Top 1
+    actions = [{
+        "label": f"🔎 Ver facturas de {top_name}",
+        "type": "filter_exact",
+        "col": "Vendor Name",
+        "val": top_name
+    }]
+    
+    return msg, chart_data, actions
 
 def generate_smart_summary(df: pd.DataFrame):
-    """Crea una narrativa escrita sobre el estado actual de los datos."""
-    if df.empty: return "La vista actual está vacía.", None
+    if df.empty: return "La vista actual está vacía.", None, []
     
     total_recs = len(df)
     col_total = 'Total'
@@ -126,118 +135,97 @@ def generate_smart_summary(df: pd.DataFrame):
     if col_total in df.columns:
         total_amt = pd.to_numeric(df[col_total], errors='coerce').fillna(0).sum()
         
-    # Moda de estado
-    status_txt = ""
-    if 'Status' in df.columns:
-        top_status = df['Status'].mode()
-        if not top_status.empty:
-            status_counts = df['Status'].value_counts(normalize=True)
-            pct = status_counts.iloc[0] * 100
-            status_txt = f"La mayoría de las facturas (**{pct:.0f}%**) están en estado **'{top_status.iloc[0]}'**."
-
-    # Moda de proveedor
-    vendor_txt = ""
-    if 'Vendor Name' in df.columns:
-        top_vendor = df['Vendor Name'].mode()
-        if not top_vendor.empty:
-            vendor_txt = f"El proveedor más frecuente es **{top_vendor.iloc[0]}**."
-
     msg = (f"📝 **Resumen Ejecutivo:**\n\n"
-           f"Actualmente estás analizando **{total_recs} registros** con un valor total de **${total_amt:,.2f}**.\n\n"
-           f"• {status_txt}\n"
-           f"• {vendor_txt}\n"
-           f"\n¿Te gustaría profundizar en algún proveedor?")
+           f"Analizando **{total_recs} registros** con valor total de **${total_amt:,.2f}**.")
     
-    return msg, None
+    return msg, None, []
 
 # --- 3. PROCESADOR PRINCIPAL ---
 
-def process_user_message(message: str, df: pd.DataFrame, lang: str) -> tuple[str, bool, dict]:
+def process_user_message(message: str, df: pd.DataFrame, lang: str) -> tuple:
     """
-    Retorna: (Texto_Respuesta, Rerun_Needed, Datos_Grafico)
+    Retorna: (Texto, Rerun_Needed, Chart_Data, Suggested_Actions)
     """
     raw_msg = normalize_token(message)
-    chart_data = None 
-
-    # --- A. INTENCIONES ANALÍTICAS (INNOVACIÓN) ---
     
-    # 1. ANOMALÍAS
-    if any(k in raw_msg for k in ["anomalia", "raro", "atipico", "alerta", "investiga", "strange", "outlier"]):
-        msg, chart = analyze_anomalies(df)
-        return msg, False, chart
+    # --- A. INTENCIONES ANALÍTICAS ---
+    if any(k in raw_msg for k in ["anomalia", "raro", "atipico", "alerta", "investiga", "outlier"]):
+        msg, chart, acts = analyze_anomalies(df)
+        return msg, False, chart, acts
 
-    # 2. TOP / RANKING
-    if any(k in raw_msg for k in ["top", "ranking", "mejor", "mayor", "mas caro", "expensive", "best"]):
-        msg, chart = generate_top_vendors(df)
-        return msg, False, chart
+    if any(k in raw_msg for k in ["top", "ranking", "mejor", "mayor", "mas caro"]):
+        msg, chart, acts = generate_top_vendors(df)
+        return msg, False, chart, acts
 
-    # 3. RESUMEN / INFORME
-    if any(k in raw_msg for k in ["resumen", "informe", "describe", "situacion", "overview", "summary", "reporte"]):
-        msg, chart = generate_smart_summary(df)
-        return msg, False, chart
+    if any(k in raw_msg for k in ["resumen", "informe", "describe", "situacion"]):
+        msg, chart, acts = generate_smart_summary(df)
+        return msg, False, chart, acts
 
-    # --- B. INTENCIÓN: GRÁFICOS ESTÁNDAR ---
+    # --- B. INTENCIÓN: GRÁFICOS ---
+    # Detectar petición de gráficos y columna específica
     keywords_chart = ["grafica", "grafico", "distribucion", "chart", "plot", "visualiza", "barras", "pastel"]
     if any(k in raw_msg for k in keywords_chart):
         target_col = None
+        
+        # Mapeo de nombres de columnas
         cols_map = {normalize_token(translate_column(lang, c)): c for c in df.columns}
         for col_norm, col_real in cols_map.items():
             if col_norm in raw_msg:
                 target_col = col_real
                 break
         
+        # Si no se encuentra columna, usar defaults por palabras clave
         if not target_col:
             if "estado" in raw_msg or "status" in raw_msg: target_col = "Status"
             elif "proveedor" in raw_msg or "vendor" in raw_msg: target_col = "Vendor Name"
             elif "prioridad" in raw_msg or "priority" in raw_msg: target_col = "Priority"
+            elif "grupo" in raw_msg or "pay" in raw_msg: target_col = "Pay Group"
         
         if target_col and target_col in df.columns:
             counts = df[target_col].value_counts().head(10)
             chart_data = {
-                "type": "bar",
-                "data": counts,
+                "type": "bar", "data": counts,
                 "title": f"Distribución - {translate_column(lang, target_col)}",
-                "x_label": translate_column(lang, target_col),
-                "y_label": "Cantidad"
+                "x_label": translate_column(lang, target_col), "y_label": "Cantidad"
             }
-            return f"📊 Aquí tienes la distribución por **{translate_column(lang, target_col)}**.", False, chart_data
+            return f"📊 Gráfico generado para **{translate_column(lang, target_col)}**.", False, chart_data, []
         else:
-            return "Dime qué columna quieres graficar (ej: 'Gráfico de Estado').", False, None
+            return "Para graficar, necesito saber la columna. Intenta: 'Gráfico de Estado' o 'Gráfico de Proveedores'.", False, None, []
 
     # --- C. INTENCIONES BÁSICAS ---
     if any(k in raw_msg for k in ["ayuda", "help", "hacer", "opciones"]):
-        return get_text(lang, "chat_help_message"), False, None
+        return get_text(lang, "chat_help_message"), False, None, []
 
     if any(k in raw_msg for k in ["reset", "limpiar", "borrar", "inicio"]):
         st.session_state.filtros_activos = []
-        return get_text(lang, "chat_response_reset"), True, None
+        return get_text(lang, "chat_response_reset"), True, None, []
 
     if any(k in raw_msg for k in ["cuantas", "cantidad", "numero", "count"]) and not "monto" in raw_msg:
-        return get_text(lang, "chat_response_count").format(n=len(df)), False, None
+        return get_text(lang, "chat_response_count").format(n=len(df)), False, None, []
 
     if any(k in raw_msg for k in ["suma", "monto", "total", "dinero"]):
         col_total = "Total"
         total_val = 0.0
         if col_total in df.columns:
             total_val = pd.to_numeric(df[col_total], errors='coerce').fillna(0).sum()
-        return get_text(lang, "chat_response_total").format(n=f"{total_val:,.2f}"), False, None
+        return get_text(lang, "chat_response_total").format(n=f"{total_val:,.2f}"), False, None, []
 
-    # --- D. FILTRADO INTELIGENTE ---
+    # --- D. FILTRADO ---
     stopwords = get_stopwords()
     words = message.split()
     clean_tokens = [normalize_token(w) for w in words if normalize_token(w) not in stopwords and len(normalize_token(w)) > 1]
 
     if not clean_tokens:
-         return get_text(lang, "chat_response_unknown"), False, None
+         return get_text(lang, "chat_response_unknown"), False, None, []
 
     data_dict = st.session_state.get('autocomplete_options', {})
     found_col, found_val = find_value_in_data(clean_tokens, data_dict)
     
     if found_col and found_val:
         exists = any(f['columna'] == found_col and f['valor'] == found_val for f in st.session_state.filtros_activos)
-        if exists: return "⚠️ Ese filtro ya está aplicado.", False, None
+        if exists: return "⚠️ Ese filtro ya está aplicado.", False, None, []
         st.session_state.filtros_activos.append({"columna": found_col, "valor": found_val})
         col_ui = translate_column(lang, found_col)
-        return get_text(lang, "chat_response_filter_applied").format(col=col_ui, val=found_val), True, None
+        return get_text(lang, "chat_response_filter_applied").format(col=col_ui, val=found_val), True, None, []
 
-    return get_text(lang, "chat_response_unknown"), False, None
+    return get_text(lang, "chat_response_unknown"), False, None, []
