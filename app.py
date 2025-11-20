@@ -1,5 +1,5 @@
 # app.py
-# VERSIÓN FINAL: COORDINADOR PRINCIPAL CON TRADUCCIÓN DE VISTA
+# VERSIÓN FINAL CON CHATBOT INTEGRADO
 
 import streamlit as st
 import pandas as pd
@@ -7,6 +7,7 @@ from modules.utils import initialize_session_state, load_custom_css, load_and_pr
 from modules.gui_sidebar import render_sidebar
 from modules.gui_views import render_active_filters, render_kpi_dashboard, render_detailed_view, render_grouped_view
 from modules.gui_rules_editor import render_rules_editor
+from modules.gui_chatbot import render_chatbot # NUEVO
 from modules.filters import aplicar_filtros_dinamicos
 from modules.translator import get_text, translate_column
 import streamlit_hotkeys as hotkeys
@@ -55,6 +56,10 @@ if uploaded and st.session_state.df_staging is None:
 # Lógica Principal
 if st.session_state.df_staging is not None:
     try:
+        # --- NUEVO: Integración Chatbot (Parte Superior o Inferior) ---
+        # Lo colocamos arriba de los filtros para alta visibilidad
+        render_chatbot(lang, st.session_state.df_staging)
+        
         # 1. Filtros
         render_active_filters(lang)
         df_res = aplicar_filtros_dinamicos(st.session_state.df_staging, st.session_state.filtros_activos)

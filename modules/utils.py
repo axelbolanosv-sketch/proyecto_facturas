@@ -29,6 +29,12 @@ def initialize_session_state():
     if 'show_rules_editor' not in st.session_state: st.session_state.show_rules_editor = False
     if 'config_file_processed' not in st.session_state: st.session_state.config_file_processed = False
 
+    # --- NUEVO: Estado del Chatbot ---
+    if 'chat_history' not in st.session_state: 
+        st.session_state.chat_history = [
+            {"role": "assistant", "content": "start_chat_msg"} # Clave para traducción
+        ]
+
 def load_custom_css():
     st.markdown("""
         <style>
@@ -82,6 +88,9 @@ def load_custom_css():
         .stButton[key*="commit_changes"] > button { background-color: var(--color-primario-azul); }
         .stButton[key*="reset_changes_button"] > button { background-color: #FFA500; }
         [data-testid="stDownloadButton"] > button { background-color: var(--color-verde); color: white; }
+        
+        /* Estilo Chatbot */
+        .stChatMessage { background-color: #f9f9f9; border-radius: 10px; padding: 10px; margin-bottom: 5px; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -157,3 +166,6 @@ def clear_state_and_prepare_reload():
     st.session_state.df_staging = None
     st.session_state.audit_log = [] 
     st.session_state.config_file_processed = False
+    # Reiniciar chat si se carga nuevo archivo
+    if 'chat_history' in st.session_state:
+        st.session_state.chat_history = [{"role": "assistant", "content": "start_chat_msg"}]
