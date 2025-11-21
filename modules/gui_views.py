@@ -1,20 +1,19 @@
 # modules/gui_views.py
-# VERSIÓN 14.0: ARCHIVO COMPLETO Y RESTAURADO
-# - Se incluyen TODAS las funciones (Modales, Filtros, KPIs, Vistas).
-# - Se mantienen las optimizaciones de rendimiento (Fragments).
-# - Se mantienen las traducciones de botones y Hotkeys.
+# VERSIÓN CORREGIDA:
+# 1. Importa desde 'modules.utils'.
+# 2. En ediciones masivas (Find/Replace), solo AGREGA el nuevo valor a la lista del bot (no borra).
+# 3. Fuerza la actualización de la tabla para que el bot vea los datos nuevos.
 
 import streamlit as st
 import pandas as pd
 import json
 import numpy as np
 from modules.translator import get_text, translate_column
-from modules.gui_utils import to_excel
+from modules.utils import to_excel, recalculate_row_status # <--- CORREGIDO
 from modules.rules_service import apply_priority_rules
 from modules.audit_service import log_general_change
 import streamlit_hotkeys as hotkeys
 
-# --- CONFIGURACIÓN DE RENDIMIENTO ---
 MAX_ROWS_FOR_TOOLTIPS = 1500 
 
 # --- MODAL BUSCAR Y REEMPLAZAR ---
@@ -96,6 +95,7 @@ def modal_find_replace(col_map, lang):
                     
                     df.loc[final_mask, col_en] = final_val
                     
+                    # --- LÓGICA DE AUTOCOMPLETADO (AGREGAR, NO BORRAR) ---
                     if col_en in st.session_state.autocomplete_options:
                         v_str = str(final_val)
                         c_opts = st.session_state.autocomplete_options[col_en]
@@ -104,10 +104,17 @@ def modal_find_replace(col_map, lang):
                             st.session_state.autocomplete_options[col_en] = sorted(c_opts)
 
                     log_general_change("Find/Replace", "Bulk Replace", f"Editadas {count} filas en '{col_en}'")
-                    st.session_state.df_staging = apply_priority_rules(df)
+                    
+                    # --- ACTUALIZACIÓN DE ESTADO Y PRIORIDAD ---
+                    df = apply_priority_rules(df)
+                    df = recalculate_row_status(df, lang) # <--- Recalcula estado de fila
+                    st.session_state.df_staging = df
+                    
                     st.session_state.editor_state = None
                     st.session_state.current_data_hash = None
                     if 'editor_key_ver' in st.session_state: st.session_state.editor_key_ver += 1
+                    
+                    # Rerun fuerza que el Chatbot vea la tabla nueva
                     st.success(f"✅ {count} cambios.")
                     st.rerun()
                 else:
@@ -153,6 +160,7 @@ def modal_bulk_edit(indices, col_map, lang):
                     elif str(i) in df.index: df.at[str(i), c_en] = final; cnt+=1
                 
                 if cnt>0:
+                    # --- LÓGICA DE AUTOCOMPLETADO (AGREGAR, NO BORRAR) ---
                     if c_en in st.session_state.autocomplete_options:
                         v_str = str(final)
                         curr = st.session_state.autocomplete_options[c_en]
@@ -161,7 +169,12 @@ def modal_bulk_edit(indices, col_map, lang):
                             st.session_state.autocomplete_options[c_en] = sorted(curr)
 
                     log_general_change("Bulk", "Edit", f"{cnt} filas en {c_en}")
-                    st.session_state.df_staging = apply_priority_rules(df)
+                    
+                    # --- ACTUALIZACIÓN DE ESTADO Y PRIORIDAD ---
+                    df = apply_priority_rules(df)
+                    df = recalculate_row_status(df, lang) # <--- Recalcula estado
+                    st.session_state.df_staging = df
+                    
                     st.session_state.editor_state = None
                     st.session_state.current_data_hash = None
                     if 'editor_key_ver' in st.session_state: st.session_state.editor_key_ver += 1
@@ -228,18 +241,15 @@ def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_
         except:
             styled_data = df_disp
     else:
-        # TRADUCIDO
         st.caption(get_text(lang, 'perf_mode_tooltips_off').format(n=MAX_ROWS_FOR_TOOLTIPS))
 
     c_sel_all, c_desel_all, _ = st.columns([0.15, 0.15, 0.7])
     
-    # TRADUCIDO
     if c_sel_all.button(get_text(lang, 'select_all_btn'), help="Select All"):
         st.session_state.pending_selection = True
         st.session_state.editor_key_ver += 1
         st.rerun()
         
-    # TRADUCIDO
     if c_desel_all.button(get_text(lang, 'deselect_all_btn'), help="Select None"):
         st.session_state.pending_selection = False
         st.session_state.editor_key_ver += 1
@@ -284,7 +294,10 @@ def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_
             new = ed.index.difference(st.session_state.df_staging.index)
             if not new.empty: st.session_state.df_staging = pd.concat([st.session_state.df_staging, ed.loc[new]])
             
+            # --- ACTUALIZACIÓN AL GUARDAR ---
             st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
+            st.session_state.df_staging = recalculate_row_status(st.session_state.df_staging, lang) # <---
+            
             log_general_change("UI", "Save", "Borrador guardado")
             st.session_state.editor_state = None; st.session_state.current_data_hash = None
             st.success("Guardado."); st.rerun()
@@ -335,7 +348,6 @@ def render_detailed_view(lang, df_filtered, df_master, col_map, all_cols):
 
     prio_map = {"🚩 Maxima Prioridad": 4, "Maxima Prioridad": 4, "Alta": 3, "Media": 2, "Minima": 1}
     
-    # TRADUCIDO
     opts = [get_text(lang, 'sort_opt_original'), get_text(lang, 'sort_opt_max_min'), get_text(lang, 'sort_opt_min_max')]
     sort_opt = st.radio(get_text(lang, 'sort_label'), opts, horizontal=True)
     st.markdown("---")
