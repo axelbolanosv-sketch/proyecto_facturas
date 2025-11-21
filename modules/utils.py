@@ -1,8 +1,7 @@
 # modules/utils.py
-# VERSIÓN CORRECTA:
-# 1. Incluye 'recalculate_row_status'.
-# 2. Inicializa 'username' y 'audit_log' correctamente.
-# 3. Mantiene la lógica de NO borrar opciones en carga.
+# VERSIÓN CORREGIDA (PRIORIDAD ESTÁNDAR):
+# 1. Se estandarizan las etiquetas de prioridad ("Minima" y "🚩 Maxima Prioridad").
+# 2. Esto corrige el error donde el motor de reglas borraba "Baja Prioridad".
 
 import streamlit as st
 import pandas as pd
@@ -134,21 +133,15 @@ def to_excel(df: pd.DataFrame):
 
 # --- 4. FUNCIÓN NUEVA: RECALCULAR ESTADO DE FILA ---
 def recalculate_row_status(df: pd.DataFrame, lang: str) -> pd.DataFrame:
-    """
-    Recalcula dinámicamente la columna 'Row Status' basándose en si existen
-    celdas vacías o con valor "0" en la fila.
-    """
     if df is None or df.empty:
         return df
 
-    # Columnas a ignorar en el cálculo
     cols_to_exclude = ['Row Status', 'Priority', 'Priority_Reason', 'Seleccionar']
     cols_to_check = [c for c in df.columns if c not in cols_to_exclude]
     
     if not cols_to_check:
         return df
     
-    # Copia temporal para validación
     df_check = df[cols_to_check].astype(str).replace(['NaT', 'nan', 'None', '<NA>'], '')
     
     blank_mask = (df_check == "") | (df_check == "0")
@@ -196,7 +189,7 @@ def load_and_process_files(uploaded_files, lang):
             if date_cols:
                 for col in date_cols: df_processed[col] = df_check[col]
 
-            # Prioridad (Legacy)
+            # --- 4. Prioridad (Legacy) - CORREGIDO ---
             if 'Pay Group' in df_processed.columns:
                 pay_group_searchable = df_processed['Pay Group'].astype(str).str.upper()
                 mask_high = pay_group_searchable.str.contains('DIST|INTERCOMPANY|PAYROLL|RENTS|SCF', na=False)
@@ -206,18 +199,21 @@ def load_and_process_files(uploaded_files, lang):
                     df_processed['Priority'] = "" 
             
                 conditions = [mask_high, mask_low]
-                choices = ["Maxima Prioridad", "Baja Prioridad"]
+                
+                # CORRECCIÓN AQUI: Usamos los nombres que el motor de reglas SI entiende
+                choices = ["🚩 Maxima Prioridad", "Minima"] # Antes era ["Maxima Prioridad", "Baja Prioridad"]
+                
                 df_processed['Priority'] = np.select(conditions, choices, default=df_processed['Priority'])
             
-            # 5. Row Status (USANDO LA NUEVA FUNCIÓN)
+            # 5. Row Status
             df_processed = recalculate_row_status(df_processed, lang)
 
-            # 6. Guardado de Estados
+            # 6. Guardado
             st.session_state.df_pristine = df_processed.copy()
             st.session_state.df_original = df_processed.copy()
             st.session_state.df_staging = df_processed.copy()
             
-            # 7. Generación de Autocompletado
+            # 7. Autocompletado
             autocomplete_options = {}
             columnas_autocompletar_en = [
                 "Vendor Name", "Status", "Assignee", 
@@ -230,7 +226,6 @@ def load_and_process_files(uploaded_files, lang):
                 if col_en in df_processed.columns:
                     try:
                         series_cleaned = df_processed[col_en].astype(str).str.strip()
-                        
                         if col_en == "Priority":
                             base_options = ["", "Zero", "Low", "Medium", "High"]
                             custom_options = ["Maxima Prioridad", "Baja Prioridad"]
@@ -254,7 +249,6 @@ def load_and_process_files(uploaded_files, lang):
                         autocomplete_options[col_en] = [] 
             
             st.session_state.autocomplete_options = autocomplete_options
-            
             columnas_iniciales = list(df_processed.columns)
             st.session_state.columnas_visibles = columnas_iniciales.copy()
             st.session_state.columnas_visibles_estable = columnas_iniciales.copy()
@@ -264,7 +258,7 @@ def load_and_process_files(uploaded_files, lang):
         st.warning(get_text(lang, 'error_corrupt'))
         st.session_state.df_staging = None
 
-# --- 5. LIMPIEZA DE ESTADO ---
+# --- 6. LIMPIEZA DE ESTADO ---
 def clear_state_and_prepare_reload():
     st.session_state.filtros_activos = []
     st.session_state.columnas_visibles = None
