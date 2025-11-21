@@ -1,12 +1,12 @@
+# modules/loader.py
 """
-loader.py
+Módulo de Carga de Datos (Loader).
 
-Módulo encargado de la carga y validación de datos
-desde un archivo Excel que contiene las facturas.
+Módulo encargado de la carga y validación de datos básica desde un archivo
+Excel que contiene las facturas.
 """
 
 import pandas as pd
-
 
 def cargar_datos(ruta_archivo: str) -> pd.DataFrame:
     """
@@ -22,12 +22,13 @@ def cargar_datos(ruta_archivo: str) -> pd.DataFrame:
     try:
         # Cargar el archivo Excel usando pandas
         # Usamos dtype=str para asegurar que todos los datos (como IDs) se lean como texto
+        # y evitar problemas de formato (ej. '00123' -> 123).
         df = pd.read_excel(ruta_archivo, dtype=str)
 
-        # Limpiar los encabezados de columnas (quitar espacios)
+        # Limpiar los encabezados de columnas (quitar espacios inicio/fin)
         df.columns = [col.strip() for col in df.columns]
 
-        # Reemplazar valores nulos (NaN, NaT) por cadenas vacías
+        # Reemplazar valores nulos (NaN, NaT) por cadenas vacías para consistencia
         df = df.fillna("")
 
         print(f" Archivo cargado correctamente con {len(df)} registros.")

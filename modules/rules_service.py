@@ -1,7 +1,10 @@
 # modules/rules_service.py
 """
+Servicio de Reglas de Negocio (Rules Service).
+
 Motor de reglas de negocio (Versión 2.0 - Multi-condición).
-Permite reglas complejas con múltiples condiciones y operadores lógicos.
+Permite evaluar reglas complejas con múltiples condiciones y operadores lógicos
+para asignar prioridades automáticamente.
 """
 
 import streamlit as st
@@ -10,7 +13,8 @@ import numpy as np
 
 def get_default_rules():
     """
-    Define las reglas por defecto con la nueva estructura de condiciones.
+    Define las reglas por defecto del sistema.
+    
     Returns:
         list: Lista de diccionarios con la configuración de reglas.
     """
@@ -115,7 +119,6 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
     )
     
     # 2. Inicializar columnas temporales de cálculo
-    # Se usa asignación directa para asegurar consistencia
     df['Priority_Calculated'] = "Sin Regla Asignada"
     df['Priority_Reason'] = "Sin Regla Asignada"
     
@@ -129,7 +132,7 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
             # Comenzar con una máscara donde TODO es True (para lógica AND)
             final_mask = pd.Series(True, index=df.index)
             
-            # Intersección de máscaras (AND)
+            # Intersección de máscaras (AND) de cada condición
             for cond in conditions:
                 cond_mask = _evaluate_condition(df, cond)
                 final_mask = final_mask & cond_mask
@@ -148,9 +151,6 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
 
     # 4. Preservar ingresos manuales (Override del Usuario)
     # Si el motor NO asignó regla, pero el usuario tenía un valor manual válido, restaurarlo.
-    # Esto permite que la edición manual "gane" a menos que una regla explícita la sobrescriba después.
-    
-    # --- CAMBIO AQUÍ: Soporte Bilingüe ---
     manual_priorities = [
         "Minima", "Media", "Alta", "🚩 Maxima Prioridad",  # Español
         "Low", "Medium", "High", "🚩 Max Priority"         # Inglés
