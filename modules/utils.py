@@ -1,18 +1,20 @@
-# modules/gui_utils.py (VERSIÓN CON MOTOR DE REGLAS Y FLAG DE CONFIG)
-# Contiene todas las funciones auxiliares para la GUI.
+# modules/utils.py
+# VERSIÓN CORREGIDA (PRIORIDAD ESTÁNDAR):
+# 1. Se estandarizan las etiquetas de prioridad ("Minima" y "🚩 Maxima Prioridad").
+# 2. Esto corrige el error donde el motor de reglas borraba "Baja Prioridad".
 
 import streamlit as st
 import pandas as pd
 import io
 import numpy as np 
 from modules.translator import get_text
-# --- [NUEVO] Importar el motor de reglas ---
-from modules.rules_service import apply_priority_rules, get_default_rules
+from modules.rules_service import get_default_rules 
 
 # --- 1. Inicializar el 'Session State' ---
 def initialize_session_state():
-    """Define el estado inicial de la sesión de Streamlit."""
-    
+    """
+    Define e inicializa el estado de la sesión de Streamlit.
+    """
     if 'filtros_activos' not in st.session_state:
         st.session_state.filtros_activos = []
     if 'language' not in st.session_state:
@@ -21,84 +23,71 @@ def initialize_session_state():
         st.session_state.columnas_visibles = None 
     if 'columnas_visibles_estable' not in st.session_state:
         st.session_state.columnas_visibles_estable = None
+        
     if 'editor_state' not in st.session_state:
         st.session_state.editor_state = None
     if 'current_data_hash' not in st.session_state:
-        st.session_state.current_data_hash = None
+        st.session_state.current_data_hash = None 
     if 'current_lang_hash' not in st.session_state:
-        st.session_state.current_lang_hash = None
+        st.session_state.current_lang_hash = None 
+    
     if 'df_pristine' not in st.session_state:
-        st.session_state.df_pristine = None
+        st.session_state.df_pristine = None 
     if 'df_original' not in st.session_state:
-        st.session_state.df_original = None
+        st.session_state.df_original = None 
     if 'df_staging' not in st.session_state:
-        st.session_state.df_staging = None
-    if 'autocomplete_options' not in st.session_state:
-        st.session_state.autocomplete_options = {}
-    if 'priority_sort_order' not in st.session_state:
-        st.session_state.priority_sort_order = None
+        st.session_state.df_staging = None 
         
-    # --- [NUEVO] Inicializar estado de reglas y auditoría ---
-    if 'priority_rules' not in st.session_state:
-        # Carga las reglas por defecto (ej. DIST, PAYROLL)
-        st.session_state.priority_rules = get_default_rules()
+    if 'autocomplete_options' not in st.session_state:
+        st.session_state.autocomplete_options = {} 
+        
+    if 'username' not in st.session_state:
+        st.session_state.username = ""
         
     if 'audit_log' not in st.session_state:
         st.session_state.audit_log = []
         
+    if 'priority_rules' not in st.session_state:
+        try:
+            from modules.rules_service import get_default_rules 
+            st.session_state.priority_rules = get_default_rules()
+        except ImportError:
+            st.session_state.priority_rules = []
+        
     if 'show_rules_editor' not in st.session_state:
         st.session_state.show_rules_editor = False
-    
-    # --- [INICIO] CORRECCIÓN (v2.4) ---
-    # (Línea de documentación interna)
-    # Añade la bandera (flag) para la lógica de "procesar una sola vez"
-    # del cargador de configuración.
+        
     if 'config_file_processed' not in st.session_state:
         st.session_state.config_file_processed = False
-    # --- [FIN] CORRECCIÓN (v2.4) ---
-
+        
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = [
+            {"role": "assistant", "content": "start_chat_msg", "chart": None, "actions": [], "custom_label": None}
+        ]
 
 # --- 2. FUNCIÓN DE DISEÑO (CSS) ---
 def load_custom_css():
-    """
-    Carga CSS personalizado en la aplicación Streamlit.
-    (Incluye el resaltado rojo para 'Maxima Prioridad')
-    """
-    # (El código CSS no cambia, se omite por brevedad)
     st.markdown(
         """
         <style>
-        /* --- CSS PARA RESALTAR CELDAS VACÍAS --- */
         [data-testid="stDataEditor"] [data-kind="cell"]:has(> .glide-cell-div:empty) {
-            background-color: #FFF3B3 !important; /* Amarillo pálido */
+            background-color: #FFF3B3 !important;
         }
-        
         [data-testid="stDataEditor"] [data-kind="cell"] > .glide-cell-div > .glide-text-content[data-content="0"] {
             background-color: #FFF3B3 !important;
-            color: #b0a06c; /* Color de texto más claro para el '0' */
+            color: #b0a06c;
         }
-
-        /* --- CSS PARA RESALTAR FILA DE ALTA PRIORIDAD --- */
-        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="Maxima Prioridad"]) {
-            background-image: linear-gradient(to right, #FFDDDD, #FFDDDD) !important;
-            color: #660000 !important; /* Oscurecer el texto para legibilidad */
-        }
+        [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="Maxima Prioridad"]),
         [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="🚩 Maxima Prioridad"]) {
             background-image: linear-gradient(to right, #FFDDDD, #FFDDDD) !important;
-            color: #660000 !important; /* Oscurecer el texto para legibilidad */
+            color: #660000 !important;
         }
-        [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="Maxima Prioridad"]) {
-            font-weight: 800 !important;
-            background-color: #FFC0C0 !important;
-            color: black !important;
-        }
+        [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="Maxima Prioridad"]), 
         [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="🚩 Maxima Prioridad"]) {
             font-weight: 800 !important;
             background-color: #FFC0C0 !important;
             color: black !important;
         }
-        /* --- [FIN] CSS --- */
-
         :root {
             --color-primario-azul: #004A99;
             --color-primario-rojo: #E30613;
@@ -106,49 +95,28 @@ def load_custom_css():
             --color-fondo: #F0F4F8;
             --color-fondo-tarjeta: #FFFFFF;
             --color-texto-principal: #0A1729;
-            --color-texto-secundario: #5A6D;
             --color-borde: #D0D9E3;
             --color-naranja: #FFA500;
             --color-naranja-hover: #E69500;
-            --color-verde: #008000; /* Verde para descargas */
-            --color-verde-hover: #006400; /* Verde oscuro */
+            --color-verde: #008000;
+            --color-verde-hover: #006400;
         }
         .stApp { background-color: var(--color-fondo); color: var(--color-texto-principal); }
         [data-testid="stSidebar"] { background-color: var(--color-fondo-tarjeta); border-right: 1px solid var(--color-borde); box-shadow: 2px 0px 10px rgba(0,0,0,0.05); }
-        .stApp h1 { color: var(--color-primario-azul); font-weight: 800; }
-        .stApp h2 { color: var(--color-primario-azul); border-bottom: 2px solid var(--color-borde); padding-bottom: 5px; }
-        .stApp h3, [data_testid="stSidebar"] h3 { color: var(--color-texto-principal); font-weight: 600; }
-        [data-testid="stSidebar"] h2 { color: var(--color-primario-azul); border-bottom: none; }
-        
-        /* ... (Resto de tu CSS sin cambios) ... */
-        
         .stButton > button { background-color: var(--color-primario-rojo); color: white; border: none; border-radius: 5px; padding: 10px 15px; font-weight: 600; transition: 0.2s ease; cursor: pointer; }
         .stButton > button:hover { background-color: var(--color-primario-rojo-hover); color: white; }
-        .stButton > button:focus { box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.4); }
         .stButton[key*="commit_changes"] > button { background-color: var(--color-primario-azul); }
         .stButton[key*="commit_changes"] > button:hover { background-color: #003366; }
         .stButton[key*="reset_changes_button"] > button { background-color: var(--color-naranja); color: white; }
         .stButton[key*="reset_changes_button"] > button:hover { background-color: var(--color-naranja-hover); color: white; }
         .stButton[key*="restore_pristine"] > button { background-color: transparent; color: var(--color-primario-rojo); border: 1px solid var(--color-primario-rojo); }
         .stButton[key*="restore_pristine"] > button:hover { background-color: rgba(227, 6, 19, 0.05); color: var(--color-primario-rojo-hover); }
-        .stButton[key*="quitar_"] > button { background-color: #e0eaf3; color: #004A99; padding: 3px 10px; border-radius: 12px; margin-right: 5px; margin-bottom: 5px; display: inline-block; font-size: 0.9em; border: 1px solid #c0d3e8; font-weight: 400; }
-        .stButton[key*="quitar_"] > button:hover { background-color: #c0d3e8; color: #004A99; border-color: #004A99; }
-        .stButton[key*="limpiar_"] > button { background-color: transparent; color: var(--color-primario-rojo); border: 1px solid var(--color-primario-rojo); }
-        .stButton[key*="limpiar_"] > button:hover { background-color: rgba(227, 6, 19, 0.05); color: var(--color-primario-rojo-hover); }
         .stTextInput > div > div > input, .stSelectbox > div > div, .stFileUploader > div { border: 1px solid var(--color-borde); background-color: var(--color-fondo-tarjeta); border-radius: 5px; }
         .stTextInput > div > div > input:focus, .stSelectbox > div > div:focus-within { border-color: var(--color-primario-azul); box-shadow: 0 0 0 2px rgba(0, 74, 153, 0.3); }
-        [data-testid="stVerticalBlock"]:has(>[data-testid="stVerticalBlockBorderWrapper"] [key*="quitar_"]) { background-color: transparent; border-radius: 0; padding: 0; box-shadow: none; border: none; }
-        [data-testid="stDataFrame"] { box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; border-radius: 8px; }
-        [data-testid="stDataEditor"] { box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; border-radius: 8px; } 
-        [data-testid="stDataFrame"] .col-header { background-color: var(--color-primario-azul); color: white; font-weight: 600; }
-        .stDataEditor .col-header { background-color: var(--color-primario-azul); color: white; font-weight: 600; }
-        .stAlert[data-testid="stInfo"] { background-color: var(--color-fondo-tarjeta); border: 1px dashed var(--color-borde); color: var(--color-texto-secundario); border-radius: 8px; }
+        [data-testid="stDataFrame"], [data-testid="stDataEditor"] { box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; border-radius: 8px; }
+        .col-header { background-color: var(--color-primario-azul); color: white; font-weight: 600; }
         [data-testid="stDownloadButton"] > button { background-color: var(--color-verde); color: white; border: none; border-radius: 5px; padding: 10px 15px; font-weight: 600; transition: 0.2s ease; cursor: pointer; }
         [data-testid="stDownloadButton"] > button:hover { background-color: var(--color-verde-hover); color: white; }
-        [data-testid="stDownloadButton"] > button:focus { box-shadow: 0 0 0 3px rgba(0, 128, 0, 0.4); }
-        .stButton[key*="toggle_cols"] > button { background-color: transparent; color: var(--color-primario-azul); border: 1px solid var(--color-primario-azul); }
-        .stButton[key*="toggle_cols"] > button:hover { background-color: rgba(0, 74, 153, 0.05); }
-        [data-testid="stMetricHelpIcon"] { cursor: help; }
         [data-testid="stStatusWidget"] { display: none !important; }
         </style>
         """,
@@ -158,25 +126,37 @@ def load_custom_css():
 # --- 3. FUNCIÓN AUXILIAR: Convertir a Excel ---
 @st.cache_data
 def to_excel(df: pd.DataFrame):
-    """Convierte un DataFrame a un archivo Excel en memoria."""
-    # (Función sin cambios)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Resultados')
-    processed_data = output.getvalue()
-    return processed_data
+    return output.getvalue()
 
-# --- 4. FUNCIÓN DE CARGA Y PROCESAMIENTO DE DATOS ---
-def load_and_process_files(uploaded_files, lang):
-    """
-    Toma los archivos cargados, los combina, limpia (usando vectorización), 
-    guarda las 3 copias y pre-calcula las opciones de autocompletar.
+# --- 4. FUNCIÓN NUEVA: RECALCULAR ESTADO DE FILA ---
+def recalculate_row_status(df: pd.DataFrame, lang: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+
+    cols_to_exclude = ['Row Status', 'Priority', 'Priority_Reason', 'Seleccionar']
+    cols_to_check = [c for c in df.columns if c not in cols_to_exclude]
     
-    --- MODIFICADO ---
-    Se elimina la lógica de prioridad estática y se reemplaza por
-    una llamada al motor de reglas dinámico.
-    """
-    # (El resto de la función no cambia)
+    if not cols_to_check:
+        return df
+    
+    df_check = df[cols_to_check].astype(str).replace(['NaT', 'nan', 'None', '<NA>'], '')
+    
+    blank_mask = (df_check == "") | (df_check == "0")
+    incomplete_rows = blank_mask.any(axis=1)
+    
+    df['Row Status'] = np.where(
+        incomplete_rows,
+        get_text(lang, 'status_incomplete'),
+        get_text(lang, 'status_complete')
+    )
+    
+    return df
+
+# --- 5. FUNCIÓN DE CARGA Y PROCESAMIENTO DE DATOS ---
+def load_and_process_files(uploaded_files, lang):
     try:
         lista_de_dataframes = []
         files_to_process = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
@@ -188,12 +168,13 @@ def load_and_process_files(uploaded_files, lang):
         
         with st.spinner("Combinando y limpiando archivos (vectorizado)..."):
             df_processed = pd.concat(lista_de_dataframes, ignore_index=True)
-            
             df_processed.columns = [col.strip() for col in df_processed.columns]
             columnas_originales = list(df_processed.columns)
             
-            # --- Limpieza Vectorizada (Sin cambios) ---
-            numeric_cols = [col for col in columnas_originales if 'Total' in col or 'Amount' in col or 'Age' in col or 'ID' in col or 'Number' in col]
+            numeric_cols = [col for col in columnas_originales if 
+                            ('Total' in col or 'Amount' in col or 'Age' in col or 'Number' in col or 'ID' in col) 
+                            and 'Assignee' not in col]
+            
             date_cols = [col for col in columnas_originales if 'Date' in col and col not in numeric_cols]
             string_cols = [col for col in columnas_originales if col not in numeric_cols and col not in date_cols]
 
@@ -203,47 +184,36 @@ def load_and_process_files(uploaded_files, lang):
                 df_processed[numeric_cols] = df_processed[numeric_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
             if date_cols:
                 df_processed[date_cols] = df_processed[date_cols].apply(pd.to_datetime, errors='coerce')
+
             df_check = df_processed.astype(str).replace('NaT', '').replace('nan', '')
             if date_cols:
-                for col in date_cols:
-                    df_processed[col] = df_check[col]
-            
-            # --- [INICIO] LÓGICA DE PRIORIDAD (MODIFICADA) ---
-            
-            if 'Priority' not in df_processed.columns:
-                df_processed['Priority'] = "" 
-                columnas_originales.append('Priority')
-            df_processed['Priority'] = df_processed['Priority'].astype(str)
+                for col in date_cols: df_processed[col] = df_check[col]
 
-            if 'Priority_Reason' not in df_processed.columns:
-                df_processed['Priority_Reason'] = "Sin Regla Asignada"
-                columnas_originales.append('Priority_Reason')
+            # --- 4. Prioridad (Legacy) - CORREGIDO ---
+            if 'Pay Group' in df_processed.columns:
+                pay_group_searchable = df_processed['Pay Group'].astype(str).str.upper()
+                mask_high = pay_group_searchable.str.contains('DIST|INTERCOMPANY|PAYROLL|RENTS|SCF', na=False)
+                mask_low = pay_group_searchable.str.contains('PAYGROUP|PAY GROUP|GNTD', na=False)
 
-            # (Línea de documentación interna)
-            # Llama al motor de reglas dinámico
-            df_processed = apply_priority_rules(df_processed)
+                if 'Priority' not in df_processed.columns:
+                    df_processed['Priority'] = "" 
             
-            # --- [FIN] LÓGICA DE PRIORIDAD (MODIFICADA) ---
+                conditions = [mask_high, mask_low]
+                
+                # CORRECCIÓN AQUI: Usamos los nombres que el motor de reglas SI entiende
+                choices = ["🚩 Maxima Prioridad", "Minima"] # Antes era ["Maxima Prioridad", "Baja Prioridad"]
+                
+                df_processed['Priority'] = np.select(conditions, choices, default=df_processed['Priority'])
             
-            # --- Cálculo de 'Row Status' ---
-            cols_to_ignore = ['Row Status', 'Priority_Reason']
-            cols_to_check = [col for col in df_check.columns if col not in cols_to_ignore]
-            
-            blank_mask = (df_check[cols_to_check] == "") | (df_check[cols_to_check] == "0")
-            incomplete_rows = blank_mask.any(axis=1)
-            
-            df_processed['Row Status'] = np.where(
-                incomplete_rows, 
-                get_text(lang, 'status_incomplete'),
-                get_text(lang, 'status_complete')
-            )
+            # 5. Row Status
+            df_processed = recalculate_row_status(df_processed, lang)
 
-            # --- Guardar las tres copias ---
+            # 6. Guardado
             st.session_state.df_pristine = df_processed.copy()
             st.session_state.df_original = df_processed.copy()
             st.session_state.df_staging = df_processed.copy()
             
-            # --- Pre-calcular opciones de autocompletar ---
+            # 7. Autocompletado
             autocomplete_options = {}
             columnas_autocompletar_en = [
                 "Vendor Name", "Status", "Assignee", 
@@ -255,20 +225,30 @@ def load_and_process_files(uploaded_files, lang):
             for col_en in columnas_autocompletar_en:
                 if col_en in df_processed.columns:
                     try:
+                        series_cleaned = df_processed[col_en].astype(str).str.strip()
                         if col_en == "Priority":
-                            base_options = ["", "Minima", "Media", "Alta"]
-                            custom_options = ["Maxima Prioridad", "🚩 Maxima Prioridad"]
-                            actual_options = df_processed[col_en].astype(str).unique()
-                            opciones = sorted(list(set(base_options + custom_options + list(actual_options))))
+                            base_options = ["", "Zero", "Low", "Medium", "High"]
+                            custom_options = ["Maxima Prioridad", "Baja Prioridad"]
+                            unique_vals = series_cleaned.unique().tolist()
+                            opciones = sorted(list(set(base_options + custom_options + unique_vals)))
+                        elif col_en == "Status":
+                            base_status_opts = [
+                                "Imported to ERP", "Requester Approval", "Routed", "Fully Paid",
+                                "Terminated", "AP Rejection", "AP Post Routing", 
+                                "Imported to OIT", "Imported to ERP Failure"
+                            ]
+                            unique_vals = series_cleaned.unique().tolist()
+                            opciones = sorted(list(set(unique_vals + base_status_opts)))
                         else:
-                            opciones = sorted(list(df_processed[col_en].astype(str).unique()))
+                            unique_vals = series_cleaned.unique().tolist()
+                            opciones = sorted(unique_vals)
+                        
+                        opciones = [o for o in opciones if o.strip() != "" and o.strip() != "nan"]    
                         autocomplete_options[col_en] = opciones
                     except Exception:
-                        autocomplete_options[col_en] = []
+                        autocomplete_options[col_en] = [] 
             
             st.session_state.autocomplete_options = autocomplete_options
-            
-            # --- Guardar estado de columnas ---
             columnas_iniciales = list(df_processed.columns)
             st.session_state.columnas_visibles = columnas_iniciales.copy()
             st.session_state.columnas_visibles_estable = columnas_iniciales.copy()
@@ -276,20 +256,10 @@ def load_and_process_files(uploaded_files, lang):
     except Exception as e:
         st.error(get_text(lang, 'error_critical').format(e=e))
         st.warning(get_text(lang, 'error_corrupt'))
-        st.session_state.df_pristine = None
-        st.session_state.df_original = None
         st.session_state.df_staging = None
-        st.session_state.columnas_visibles = None
-        st.session_state.columnas_visibles_estable = None
-        st.session_state.filtros_activos = []
-        st.session_state.autocomplete_options = {}
 
-# --- 5. CALLBACK PARA LIMPIAR ESTADO ---
+# --- 6. LIMPIEZA DE ESTADO ---
 def clear_state_and_prepare_reload():
-    """
-    Resetea el estado de la sesión al cargar nuevos archivos.
-    Limpia las tres copias del DataFrame.
-    """
     st.session_state.filtros_activos = []
     st.session_state.columnas_visibles = None
     st.session_state.columnas_visibles_estable = None
@@ -300,14 +270,3 @@ def clear_state_and_prepare_reload():
     st.session_state.df_original = None
     st.session_state.df_staging = None
     st.session_state.autocomplete_options = {}
-    st.session_state.priority_sort_order = None
-    
-    # --- [NUEVO] Resetear estado de reglas y auditoría ---
-    st.session_state.show_rules_editor = False
-    
-    # --- [INICIO] CORRECCIÓN (v2.4) ---
-    # (Línea de documentación interna)
-    # Resetea la bandera de carga de configuración al
-    # cargar un nuevo archivo de Excel.
-    st.session_state.config_file_processed = False
-    # --- [FIN] CORRECCIÓN (v2.4) ---
