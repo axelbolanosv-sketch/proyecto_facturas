@@ -10,7 +10,7 @@ def render_chatbot(lang: str, df_staging):
     """
     Interfaz del chatbot 7.0:
     - Historial Renombrable
-    - Chips de Análisis (Incluyendo Top Global)
+    - Chips de Análisis Traducibles (Incluyendo Top Global)
     - Acciones de Anomalías
     """
     if "chat_history" not in st.session_state:
@@ -20,12 +20,12 @@ def render_chatbot(lang: str, df_staging):
             "content": "start_chat_msg", 
             "chart": None, 
             "actions": [],
-            "custom_label": None # Nuevo campo para el nombre personalizado
+            "custom_label": None 
         })
 
     with st.expander(get_text(lang, "chat_title"), expanded=False):
         
-        # --- 1. RENDERIZADO DE HISTORIAL (Editable y Colapsable) ---
+        # --- 1. RENDERIZADO DE HISTORIAL ---
         history = st.session_state.chat_history
         user_indices = [i for i, msg in enumerate(history) if msg['role'] == 'user']
         
@@ -33,6 +33,7 @@ def render_chatbot(lang: str, df_staging):
         if history and history[0]['role'] == 'assistant':
             msg = history[0]
             content = msg.get("content", "")
+            # Traducir mensaje de bienvenida si es la clave por defecto
             display_text = get_text(lang, content) if content == "start_chat_msg" else content
             with st.chat_message("assistant"):
                 st.markdown(display_text)
@@ -43,25 +44,23 @@ def render_chatbot(lang: str, df_staging):
             
             for i in user_indices:
                 is_last_interaction = (i == last_user_idx)
-                
-                # Lógica del Título del Expander
                 user_msg = history[i]
+                
+                # Título del Expander
                 if user_msg.get("custom_label"):
                     expander_label = f"📂 {user_msg['custom_label']}"
                 else:
                     content_preview = user_msg['content'][:40] + "..." if len(user_msg['content']) > 40 else user_msg['content']
                     expander_label = f"🗣️ {content_preview}"
                 
-                # Renderizar Expander
                 with st.expander(expander_label, expanded=is_last_interaction):
-                    
-                    # --- NUEVO: CAMPO PARA RENOMBRAR ---
+                    # Renombrar
                     c_edit, _ = st.columns([0.7, 0.3])
                     new_label = c_edit.text_input(
-                        "🏷️ Renombrar esta consulta:", 
+                        get_text(lang, "chat_rename_label"), 
                         value=user_msg.get("custom_label", ""), 
-                        placeholder="Ej: Análisis de Anomalías",
-                        key=f"rename_{i}"
+                        placeholder=get_text(lang, "chat_rename_placeholder"),
+                        key=f"rename_{i}_{lang}" # Key dinámica para forzar redibujado
                     )
                     
                     if new_label != user_msg.get("custom_label", ""):
@@ -70,11 +69,10 @@ def render_chatbot(lang: str, df_staging):
                     
                     st.markdown("---")
                     
-                    # 1. Mensaje Usuario
+                    # Chat
                     with st.chat_message("user"):
                         st.markdown(user_msg['content'])
                     
-                    # 2. Respuestas del Asistente
                     next_user = user_indices[user_indices.index(i) + 1] if user_indices.index(i) + 1 < len(user_indices) else len(history)
                     
                     for j in range(i + 1, next_user):
@@ -82,7 +80,6 @@ def render_chatbot(lang: str, df_staging):
                         if bot_msg['role'] == 'assistant':
                             with st.chat_message("assistant"):
                                 st.markdown(bot_msg['content'])
-                                
                                 if bot_msg.get("chart"):
                                     c_info = bot_msg["chart"]
                                     st.caption(f"📈 {c_info.get('title','')}")
@@ -90,50 +87,48 @@ def render_chatbot(lang: str, df_staging):
                                 
                                 if bot_msg.get("actions"):
                                     for idx, act in enumerate(bot_msg["actions"]):
-                                        btn_key = f"act_{j}_{idx}"
+                                        btn_key = f"act_{j}_{idx}_{lang}"
                                         if st.button(act['label'], key=btn_key):
                                             if act['type'] == 'filter_numeric':
-                                                # Crea una regla de prioridad para filtrar
                                                 new_rule_id = f"auto_{int(time.time())}"
                                                 st.session_state.priority_rules.append({
-                                                    "id": new_rule_id,
-                                                    "enabled": True, "order": 5, 
+                                                    "id": new_rule_id, "enabled": True, "order": 5, 
                                                     "priority": "🚩 Maxima Prioridad", 
-                                                    "reason": "Filtro Anomalía Chatbot", # Nombre clave para el filtro
+                                                    "reason": "Filtro Chatbot", 
                                                     "conditions": [{"column": act['col'], "operator": act['op'], "value": act['val']}]
                                                 })
-                                                st.toast("✅ Regla de anomalía aplicada. Usa el filtro lateral para verla.")
+                                                st.toast("✅ Regla aplicada.")
                                                 st.rerun()
-                                            
                                             elif act['type'] == 'filter_exact':
                                                 st.session_state.filtros_activos.append({"columna": act['col'], "valor": act['val']})
                                                 st.rerun()
 
-        # --- 2. CHIPS / BOTONES (Restaurados y Mejorados) ---
+        # --- 2. CHIPS / BOTONES RÁPIDOS (CORREGIDOS) ---
+        # Usamos key=f"..._{lang}" para obligar a Streamlit a actualizar el texto
         st.divider()
-        st.markdown("###### 💡 Acciones Rápidas:")
+        st.markdown(f"###### {get_text(lang, 'chat_actions_header')}")
         
-        # Fila 1: Análisis (Incluye tu Top Global)
         c1, c2, c3 = st.columns(3)
         suggestion = None
         
-        if c1.button("🕵️ Detectar Anomalías", use_container_width=True):
-            suggestion = "Analiza anomalías en los montos"
+        if c1.button(get_text(lang, "chip_anomalies"), key=f"chip_ano_{lang}", use_container_width=True):
+            suggestion = get_text(lang, "prompt_anomalies")
         
-        # ¡AQUÍ ESTÁ TU BOTÓN DE TOP GLOBAL!
-        if c2.button("🏆 Top Proveedores", use_container_width=True):
-            suggestion = "Muestrame el Top de proveedores"
+        if c2.button(get_text(lang, "chip_top_vendors"), key=f"chip_top_{lang}", use_container_width=True):
+            suggestion = get_text(lang, "prompt_top_vendors")
             
-        if c3.button("📝 Resumen Ejecutivo", use_container_width=True):
-            suggestion = "Dame un resumen ejecutivo"
+        if c3.button(get_text(lang, "chip_summary"), key=f"chip_sum_{lang}", use_container_width=True):
+            suggestion = get_text(lang, "prompt_summary")
 
-        # Fila 2: Gráficos y Gestión
         c4, c5, c6, c7 = st.columns(4)
-        if c4.button("📈 Estatus", use_container_width=True): suggestion = "Gráfico de Estado"
-        if c5.button("📈 Prioridad", use_container_width=True): suggestion = "Gráfico de Prioridad"
-        if c6.button("🔄 Reset", use_container_width=True): suggestion = "Resetear todo"
-        # Un botón extra útil
-        if c7.button("❓ Ayuda", use_container_width=True): suggestion = "Ayuda"
+        if c4.button(get_text(lang, "chip_status"), key=f"chip_sta_{lang}", use_container_width=True): 
+            suggestion = get_text(lang, "prompt_chart_status")
+        if c5.button(get_text(lang, "chip_priority"), key=f"chip_prio_{lang}", use_container_width=True): 
+            suggestion = get_text(lang, "prompt_chart_prio")
+        if c6.button(get_text(lang, "chip_reset"), key=f"chip_rst_{lang}", use_container_width=True): 
+            suggestion = get_text(lang, "prompt_reset")
+        if c7.button(get_text(lang, "chip_help"), key=f"chip_hlp_{lang}", use_container_width=True): 
+            suggestion = get_text(lang, "prompt_help")
 
         # --- 3. INPUT USUARIO ---
         user_input = st.chat_input(get_text(lang, "chat_placeholder"))
@@ -156,9 +151,6 @@ def render_chatbot(lang: str, df_staging):
                     resp_txt, rerun, chart, actions = process_user_message(final_prompt, df_context, lang)
                     
                     st.session_state.chat_history.append({
-                        "role": "assistant", 
-                        "content": resp_txt, 
-                        "chart": chart,
-                        "actions": actions
+                        "role": "assistant", "content": resp_txt, "chart": chart, "actions": actions
                     })
             st.rerun()

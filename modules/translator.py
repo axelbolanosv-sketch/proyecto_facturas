@@ -1,5 +1,5 @@
 # modules/translator.py
-# VERSIÓN 17.0: SOPORTE PARA PRIORIDADES TRADUCIBLES
+# VERSIÓN 19.0: TRADUCCIÓN COMPLETA (UI + LÓGICA DEL CHATBOT)
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS (Base de Datos -> UI) ---
 COLUMN_TRANSLATIONS = {
@@ -49,6 +49,46 @@ COLUMN_TRANSLATIONS = {
 # --- DICCIONARIO DE TEXTOS DE LA INTERFAZ (UI) ---
 LANGUAGES = {
     "es": {
+        # --- 11. RESPUESTAS DE LÓGICA (CHATBOT) - NUEVO ---
+        "logic_msg_anomalies_error": "No puedo analizar anomalías sin una columna 'Total' numérica.",
+        "logic_msg_anomalies_none": "Los montos son todos cero o no detecto variaciones significativas.",
+        "logic_msg_anomalies_found": "🕵️ **Análisis de Anomalías (Estadístico):**\n\nHe detectado **{count} facturas** sospechosas con montos superiores a **${threshold:,.2f}** (Valores Atípicos > 2x Desviación Estándar).",
+        "logic_chart_anomalies_title": "Top Anomalías (> ${t})",
+        "logic_action_filter_anomalies": "🌪️ Filtrar estas {n} facturas",
+        
+        "logic_msg_top_error": "Me faltan columnas (Vendor Name o Total).",
+        "logic_msg_top_none": "No hay datos suficientes.",
+        "logic_msg_top_found": "🏆 **Ranking de Proveedores:**\n\nEl #1 es **{name}** (${val:,.2f}). Aquí tienes el Top 5:",
+        "logic_chart_top_title": "Top 5 Proveedores ($)",
+        "logic_action_filter_top": "🔎 Ver facturas de {name}",
+        
+        "logic_msg_summary_empty": "La vista actual está vacía.",
+        "logic_msg_summary": "📝 **Resumen Ejecutivo:**\n\nAnalizando **{n} registros** con valor total de **${amt:,.2f}**.",
+        
+        "logic_msg_chart_ok": "📊 Gráfico generado para **{col}**.",
+        "logic_msg_chart_fail": "Para graficar, necesito saber la columna. Intenta: 'Gráfico de Estado' o 'Gráfico de Proveedores'.",
+        "logic_msg_filter_exists": "⚠️ Ese filtro ya está aplicado.",
+
+        # --- CHATBOT QUICK ACTIONS ---
+        "chat_actions_header": "Acciones Rápidas:",
+        "chip_anomalies": "🕵️ Detectar Anomalías",
+        "chip_top_vendors": "🏆 Top Proveedores",
+        "chip_summary": "📝 Resumen Ejecutivo",
+        "chip_status": "📈 Estatus",
+        "chip_priority": "📈 Prioridad",
+        "chip_reset": "🔄 Reset",
+        "chip_help": "❓ Ayuda",
+        
+        "prompt_anomalies": "Analiza anomalías en los montos",
+        "prompt_top_vendors": "Muestrame el Top de proveedores",
+        "prompt_summary": "Dame un resumen ejecutivo",
+        "prompt_chart_status": "Gráfico de Estado",
+        "prompt_chart_prio": "Gráfico de Prioridad",
+        "prompt_reset": "Resetear todo",
+        "prompt_help": "Ayuda",
+        "chat_rename_label": "🏷️ Renombrar esta consulta:",
+        "chat_rename_placeholder": "Ej: Análisis de Anomalías",
+
         # --- PRIORIDADES (VALORES) ---
         "prio_max": "🚩 Maxima Prioridad",
         "prio_high": "Alta",
@@ -93,8 +133,6 @@ LANGUAGES = {
         "view_label": "Vista:",
         "view_type_detailed": "Detallada",
         "view_type_grouped": "Agrupada",
-        
-        # Vista Agrupada
         "group_by_header": "Análisis Agrupado",
         "group_by_select": "¿Agrupar resultados por?",
         "group_total_amount": "Monto Total",
@@ -105,8 +143,6 @@ LANGUAGES = {
         "group_avg_age": "Antigüedad Prom. (Días)",
         "group_view_blank_row_info": "ℹ️ **Nota:** Una fila sin nombre (en blanco) en esta tabla agrupa todas las facturas que no tenían un valor (estaban vacías) en la columna de agrupación seleccionada (ej. un 'Estado de Pago' en blanco).",
         "download_button_short": "Descargar",
-
-        # Vista Detallada & Columnas
         "detailed_results_header": "Resultados Detallados",
         "visible_cols_header": "Columnas Visibles",
         "visible_cols_select": "Seleccione las columnas que desea ver:",
@@ -124,8 +160,6 @@ LANGUAGES = {
         "editor_actions_header": "Acciones del Editor",
         "editor_info_help": "Está en modo de edición. Haga doble clic en una celda para modificarla. Puede añadir o eliminar filas usando los botones (+) y (x) al final.",
         "autocomplete_help": "Seleccione un valor existente o escriba para filtrar. Esto ayuda a mantener la consistencia.",
-        
-        # Botones Editor
         "add_row_button": "➕ Añadir Fila",
         "add_row_help": "Haga clic para añadir una fila (o use el atajo Ctrl+I).",
         "save_changes_button": "Guardar Borrador",
@@ -136,8 +170,6 @@ LANGUAGES = {
         "reset_changes_help": "Descarta los cambios del borrador y restaura el último punto de guardado estable. (Ctrl+Z)",
         "restore_pristine_button": "Restaurar Original",
         "restore_pristine_help": "¡PELIGRO! Borra TODOS los cambios (borrador y estable) y restaura los datos del archivo Excel original.",
-        
-        # Mensajes Editor
         "editor_info_help_add_row": "⚠️ Presione 'Guardar Borrador' después de editar para actualizar el estado de las filas.",
         "editor_info_help_save": "Haga clic en 'Guardar Borrador' para actualizar el estado.",
         "save_success_message": "¡Borrador guardado y estado actualizado con éxito!",
@@ -145,8 +177,6 @@ LANGUAGES = {
         "editor_manual_save_warning": "⚠️ **Importante:** Sus cambios **no se guardan automáticamente** (ni con 'Enter'). Puede editar múltiples celdas. Haga clic en **'Guardar Borrador' (o Ctrl+S)** para guardar. Si cambia de idioma, filtros, o vista *antes* de guardar, sus ediciones se perderán.",
         "status_incomplete": "Fila Incompleta",
         "status_complete": "Fila Completa",
-        
-        # Descargas
         "download_json_button": "Descargar resultados como JSON",
         "download_excel_button": "Descargar resultados como Excel",
         "download_excel_manual_edits_button": "Descargar Borrador Actual (Excel)",
@@ -158,7 +188,6 @@ LANGUAGES = {
         "user_placeholder": "Ej. Juan Perez",
         "user_warning": "Ingrese usuario para registrar acciones.",
         "audit_log_sidebar_btn": "📥 Descargar Log de Auditoría",
-        
         "config_header": "Gestión de Configuración",
         "config_help_text": "Guarde su vista actual (filtros, columnas, orden) para usarla después, o cargue una guardada previamente.",
         "save_config_button": "💾 Guardar Configuración",
@@ -197,7 +226,6 @@ LANGUAGES = {
         "rules_editor_header": "Reglas Actuales (Editar/Eliminar)",
         "rules_editor_order_help": "Número más bajo se ejecuta primero (ej. 10 es antes que 20).",
         "rules_editor_reason_help": "La descripción de la regla (ej. 'Alto volumen Nov 2025'). Se mostrará en la columna 'Prioridad (Razón)'.",
-        
         "rules_add_new_header": "➕ Añadir Nueva Regla",
         "rules_add_new_subheader": "Crear una nueva regla de negocio",
         "rules_add_col_type": "1. Condición (Columna)",
@@ -209,7 +237,6 @@ LANGUAGES = {
         "rules_add_new_btn": "Añadir Regla a la lista",
         "rules_add_error_all_fields": "Todos los campos son obligatorios para añadir una regla.",
         "rules_add_success": "✅ ¡Regla para '{val}' añadida! Revísela en la tabla y guarde.",
-        
         "rules_editor_audit_header": "Auditoría (Trazabilidad)",
         "rules_editor_reason_input": "Razón del Cambio (Obligatorio para guardar)",
         "rules_editor_reason_placeholder": "Ej: Se añade al proveedor 'ACME' como Alta Prioridad por inicio de contrato.",
@@ -221,7 +248,7 @@ LANGUAGES = {
         "audit_log_info": "Descargue el historial completo de todos los cambios a las reglas en formato Excel.",
         "audit_log_download_btn": "Descargar Log (Excel)",
 
-        # --- 9. EDITOR DE REGLAS (CONSTRUCTOR/DIALOG) ---
+        # --- 9. EDITOR DE REGLAS (CONSTRUCTOR) ---
         "rules_editor_title_dialog": "Editor de Reglas de Negocio",
         "rules_editor_info_msg": "Defina reglas lógicas. El sistema detectará automáticamente si necesita ingresar un número o texto.",
         "rules_builder_title": "1. Definición de la Regla",
@@ -255,7 +282,7 @@ LANGUAGES = {
         "btn_delete_rule": "Eliminar",
         "btn_close_editor": "Cerrar Editor",
 
-        # --- 10. CHATBOT / ASISTENTE ---
+        # --- 10. CHATBOT ---
         "chat_title": "💬 Asistente Virtual",
         "chat_placeholder": "Escribe aquí (ej: 'filtra por ACME', 'ayuda')...",
         "start_chat_msg": "¡Hola! Soy tu asistente virtual. ¿En qué puedo ayudarte hoy? Puedo contar facturas, sumar montos o filtrar por ti.",
@@ -284,6 +311,46 @@ LANGUAGES = {
         "chat_thinking": "Procesando tu solicitud..."
     },
     "en": {
+        # --- 11. LOGIC RESPONSES (CHATBOT) - NEW ---
+        "logic_msg_anomalies_error": "I cannot analyze anomalies without a numeric 'Total' column.",
+        "logic_msg_anomalies_none": "Amounts are all zero or no significant variations detected.",
+        "logic_msg_anomalies_found": "🕵️ **Anomaly Analysis (Statistical):**\n\nI have detected **{count} suspicious invoices** with amounts higher than **${threshold:,.2f}** (Outliers > 2x Standard Deviation).",
+        "logic_chart_anomalies_title": "Top Anomalies (> ${t})",
+        "logic_action_filter_anomalies": "🌪️ Filter these {n} invoices",
+        
+        "logic_msg_top_error": "Missing columns (Vendor Name or Total).",
+        "logic_msg_top_none": "Not enough data.",
+        "logic_msg_top_found": "🏆 **Vendor Ranking:**\n\nThe #1 is **{name}** (${val:,.2f}). Here is the Top 5:",
+        "logic_chart_top_title": "Top 5 Vendors ($)",
+        "logic_action_filter_top": "🔎 Show invoices for {name}",
+        
+        "logic_msg_summary_empty": "The current view is empty.",
+        "logic_msg_summary": "📝 **Executive Summary:**\n\nAnalyzing **{n} records** with a total value of **${amt:,.2f}**.",
+        
+        "logic_msg_chart_ok": "📊 Chart generated for **{col}**.",
+        "logic_msg_chart_fail": "To chart, I need to know the column. Try: 'Status Chart' or 'Vendor Chart'.",
+        "logic_msg_filter_exists": "⚠️ That filter is already applied.",
+
+        # --- CHATBOT QUICK ACTIONS ---
+        "chat_actions_header": "Quick Actions:",
+        "chip_anomalies": "🕵️ Detect Anomalies",
+        "chip_top_vendors": "🏆 Top Vendors",
+        "chip_summary": "📝 Executive Summary",
+        "chip_status": "📈 Status",
+        "chip_priority": "📈 Priority",
+        "chip_reset": "🔄 Reset",
+        "chip_help": "❓ Help",
+        
+        "prompt_anomalies": "Analyze amount anomalies",
+        "prompt_top_vendors": "Show me Top vendors",
+        "prompt_summary": "Give me an executive summary",
+        "prompt_chart_status": "Status Chart",
+        "prompt_chart_prio": "Priority Chart",
+        "prompt_reset": "Reset everything",
+        "prompt_help": "Help",
+        "chat_rename_label": "🏷️ Rename this query:",
+        "chat_rename_placeholder": "e.g. Anomaly Analysis",
+
         # --- PRIORITIES (VALUES) ---
         "prio_max": "🚩 Max Priority",
         "prio_high": "High",
@@ -328,7 +395,6 @@ LANGUAGES = {
         "view_label": "View:",
         "view_type_detailed": "Detailed",
         "view_type_grouped": "Grouped",
-        
         "group_by_header": "Grouped Analysis",
         "group_by_select": "Group results by?",
         "group_total_amount": "Total Amount",
@@ -339,7 +405,6 @@ LANGUAGES = {
         "group_avg_age": "Avg. Age (Days)",
         "group_view_blank_row_info": "ℹ️ **Note:** A blank row in this table groups all invoices that had no value (were empty) in the selected grouping column (e.g., a blank 'Pay Status').",
         "download_button_short": "Download",
-
         "detailed_results_header": "Detailed Results",
         "visible_cols_header": "Visible Columns",
         "visible_cols_select": "Select columns to view:",
@@ -357,7 +422,6 @@ LANGUAGES = {
         "editor_actions_header": "Editor Actions",
         "editor_info_help": "You are in edit mode. Double-click a cell to modify it. You can add or remove rows using the (+) and (x) buttons at the end.",
         "autocomplete_help": "Select an existing value or type to filter. This helps maintain consistency.",
-        
         "add_row_button": "➕ Add Row",
         "add_row_help": "Click to add a row (or use Ctrl+I).",
         "save_changes_button": "Save Draft",
@@ -368,7 +432,6 @@ LANGUAGES = {
         "reset_changes_help": "Discirds draft changes and restores the last stable save point. (Ctrl+Z)",
         "restore_pristine_button": "Restore Original",
         "restore_pristine_help": "DANGER! Deletes ALL changes (draft and stable) and restores data from the original Excel file.",
-        
         "editor_info_help_add_row": "⚠️ Press 'Save Draft' after editing to update row status.",
         "editor_info_help_save": "Click 'Save Draft' to update status.",
         "save_success_message": "Draft saved and status updated successfully!",
@@ -376,7 +439,6 @@ LANGUAGES = {
         "editor_manual_save_warning": "⚠️ **Important:** Your changes are **not saved automatically** (not even with 'Enter'). You can edit multiple cells. Click **'Save Draft' (or Ctrl+S)** to save. If you change language, filters, or view *before* saving, your edits will be lost.",
         "status_incomplete": "Incomplete Row",
         "status_complete": "Complete Row",
-        
         "download_json_button": "Download results as JSON",
         "download_excel_button": "Download results as Excel",
         "download_excel_manual_edits_button": "Download Current Draft (Excel)",
@@ -388,7 +450,6 @@ LANGUAGES = {
         "user_placeholder": "E.g. John Doe",
         "user_warning": "Enter user to log actions.",
         "audit_log_sidebar_btn": "📥 Download Audit Log",
-        
         "config_header": "Configuration Management",
         "config_help_text": "Save your current view (filters, columns, order) to use later, or load a previously saved one.",
         "save_config_button": "💾 Save Configuration",
@@ -427,7 +488,6 @@ LANGUAGES = {
         "rules_editor_header": "Current Rules (Edit/Delete)",
         "rules_editor_order_help": "Lowest number runs first (e.g., 10 runs before 20).",
         "rules_editor_reason_help": "The rule description (e.g., 'High volume Nov 2025'). This will be shown in the 'Priority (Reason)' column.",
-        
         "rules_add_new_header": "➕ Add New Rule",
         "rules_add_new_subheader": "Create a new business rule",
         "rules_add_col_type": "1. Condition (Column)",
@@ -439,7 +499,6 @@ LANGUAGES = {
         "rules_add_new_btn": "Add Rule to list",
         "rules_add_error_all_fields": "All fields are required to add a rule.",
         "rules_add_success": "✅ Rule for '{val}' added! Review it in the table and save.",
-        
         "rules_editor_audit_header": "Audit (Traceability)",
         "rules_editor_reason_input": "Reason for Change (Required to save)",
         "rules_editor_reason_placeholder": "e.g., Added 'ACME' vendor as High Priority due to new contract.",
@@ -485,7 +544,7 @@ LANGUAGES = {
         "btn_delete_rule": "Delete",
         "btn_close_editor": "Close Editor",
 
-        # --- 10. CHATBOT / ASSISTANT ---
+        # --- 10. CHATBOT ---
         "chat_title": "💬 Virtual Assistant",
         "chat_placeholder": "Type here (e.g. 'filter by ACME', 'help')...",
         "start_chat_msg": "Hello! I'm your virtual assistant. How can I help you today? I can count invoices, sum amounts, or filter for you.",
