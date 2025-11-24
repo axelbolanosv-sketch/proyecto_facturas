@@ -1,5 +1,5 @@
 # app.py
-# VERSIÓN FINAL CON CHATBOT INTEGRADO
+# VERSIÓN FINAL CON CHATBOT INTEGRADO Y GESTIÓN DE MODAL MEJORADA
 
 import streamlit as st
 import pandas as pd
@@ -28,13 +28,27 @@ hotkeys.activate([
 
 st.title(f"🔎 {get_text(lang, 'title')}")
 
-# Modal Reglas
+# --- MODAL DE REGLAS (LÓGICA MEJORADA 'TRIGGER') ---
+# Verificamos si el editor debe mostrarse. 
 if st.session_state.get('show_rules_editor', False):
-    render_rules_editor(
-        st.session_state.columnas_visibles or [], 
-        st.session_state.autocomplete_options
-    )
-    st.session_state.show_rules_editor = False
+    
+    # Verificamos si hay una intención activa (Trigger) de abrirlo o mantenerlo abierto.
+    # Si el usuario hace clic fuera y luego interactúa con la app, este trigger será False,
+    # apagando el modal automáticamente.
+    if st.session_state.get('rules_open_trigger', False):
+        
+        # Apagamos el trigger inmediatamente para que sea necesaria una nueva acción
+        # interna (como guardar o editar) para mantenerlo vivo en el siguiente ciclo.
+        st.session_state.rules_open_trigger = False
+        
+        render_rules_editor(
+            st.session_state.columnas_visibles or [], 
+            st.session_state.autocomplete_options
+        )
+    else:
+        # Si la bandera 'show' es True pero no hay 'trigger' reciente, significa que el usuario
+        # salió del modal (clic fuera). Forzamos el cierre en el backend.
+        st.session_state.show_rules_editor = False
 
 # Preparar datos para Sidebar
 cols_ui = []
@@ -56,8 +70,7 @@ if uploaded and st.session_state.df_staging is None:
 # Lógica Principal
 if st.session_state.df_staging is not None:
     try:
-        # --- NUEVO: Integración Chatbot (Parte Superior o Inferior) ---
-        # Lo colocamos arriba de los filtros para alta visibilidad
+        # --- Integración Chatbot ---
         render_chatbot(lang, st.session_state.df_staging)
         
         # 1. Filtros
@@ -68,8 +81,8 @@ if st.session_state.df_staging is not None:
         render_kpi_dashboard(lang, df_res)
         st.markdown("---")
 
-        # 3. Selector Vista (TRADUCIDO)
-        view_label = get_text(lang, 'view_label') # "Vista:" o "View:"
+        # 3. Selector Vista
+        view_label = get_text(lang, 'view_label') 
         view = st.radio(view_label, [get_text(lang, 'view_type_detailed'), get_text(lang, 'view_type_grouped')], horizontal=True)
 
         if view == get_text(lang, 'view_type_detailed'):
@@ -79,6 +92,5 @@ if st.session_state.df_staging is not None:
 
     except Exception as e:
         st.error(f"Error inesperado: {e}")
-        # Opcional: st.exception(e) para debug
 else:
     st.info("Por favor cargue un archivo Excel para comenzar.")

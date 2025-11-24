@@ -18,6 +18,8 @@ from modules.audit_service import get_audit_log_excel
 def _callback_open_rules_editor():
     """Callback simple para activar la bandera que muestra el editor de reglas."""
     st.session_state.show_rules_editor = True
+    # ACTIVAR TRIGGER: Indicamos que hay una intención explícita de abrirlo
+    st.session_state.rules_open_trigger = True 
 
 def _clear_rules_editor_cache():
     """
