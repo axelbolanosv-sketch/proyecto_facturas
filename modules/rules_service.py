@@ -2,9 +2,16 @@
 """
 Servicio de Reglas de Negocio (Rules Service).
 
-Motor de reglas de negocio (Versión 2.0 - Multi-condición).
+Motor de reglas de negocio (Versión 2.1 - Prioridad Inversa).
 Permite evaluar reglas complejas con múltiples condiciones y operadores lógicos
 para asignar prioridades automáticamente.
+
+NOTA IMPORTANTE:
+Para evitar que reglas generales sobrescriban a reglas específicas de alta prioridad,
+el sistema ahora aplica las reglas en orden INVERSO de su número de 'Orden'.
+- Primero se ejecutan las reglas de orden alto (ej. 100).
+- Al final se ejecutan las reglas de orden bajo (ej. 1).
+De esta forma, la regla con el número más pequeño es la que "gana" al final.
 """
 
 import streamlit as st
@@ -112,10 +119,14 @@ def apply_priority_rules(df: pd.DataFrame) -> pd.DataFrame:
         rules = get_default_rules()
         st.session_state.priority_rules = rules
         
-    # Ordenar por campo 'order': menor número se ejecuta primero.
+    # --- CORRECCIÓN CRÍTICA: ORDEN INVERSO ---
+    # Ordenar por campo 'order'. Usamos reverse=True para que las reglas con
+    # números ALTOS se ejecuten primero, y las de números BAJOS (más importantes)
+    # se ejecuten al final, sobrescribiendo el resultado.
     active_rules = sorted(
         [r for r in rules if r.get('enabled', True)],
-        key=lambda x: x.get('order', 99)
+        key=lambda x: x.get('order', 99),
+        reverse=True 
     )
     
     # 2. Inicializar columnas temporales de cálculo

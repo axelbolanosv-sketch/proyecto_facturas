@@ -1,5 +1,5 @@
 # modules/translator.py
-# VERSIÓN 19.0: TRADUCCIÓN COMPLETA (UI + LÓGICA DEL CHATBOT)
+# VERSIÓN 19.1: CORRECCIÓN DE SINTAXIS Y TRADUCCIONES COMPLETAS
 
 # --- MAPA DE TRADUCCIÓN DE COLUMNAS (Base de Datos -> UI) ---
 COLUMN_TRANSLATIONS = {
@@ -49,7 +49,7 @@ COLUMN_TRANSLATIONS = {
 # --- DICCIONARIO DE TEXTOS DE LA INTERFAZ (UI) ---
 LANGUAGES = {
     "es": {
-        # --- 11. RESPUESTAS DE LÓGICA (CHATBOT) - NUEVO ---
+        # --- 11. RESPUESTAS DE LÓGICA (CHATBOT) ---
         "logic_msg_anomalies_error": "No puedo analizar anomalías sin una columna 'Total' numérica.",
         "logic_msg_anomalies_none": "Los montos son todos cero o no detecto variaciones significativas.",
         "logic_msg_anomalies_found": "🕵️ **Análisis de Anomalías (Estadístico):**\n\nHe detectado **{count} facturas** sospechosas con montos superiores a **${threshold:,.2f}** (Valores Atípicos > 2x Desviación Estándar).",
@@ -276,11 +276,18 @@ LANGUAGES = {
         "lbl_conds_added": "Condiciones (Y):",
         "warn_no_name": "Falta el nombre de la regla.",
         "btn_save_rule": "💾 Guardar Regla",
+        "btn_update_rule": "💾 Actualizar Regla",
         "success_saved": "¡Guardada!",
         "info_no_rules": "Sin reglas.",
         "btn_toggle_rule": "Activar/Desactivar",
         "btn_delete_rule": "Eliminar",
         "btn_close_editor": "Cerrar Editor",
+
+        # --- BOTONES DE ACCIÓN (REGLAS) ---
+        "btn_edit_rule": "✏️ Editar",
+        "btn_deactivate_rule": "⚪ Desactivar",
+        "btn_activate_rule": "🟢 Activar",
+        "btn_delete_rule_icon": "🗑️",
 
         # --- 10. CHATBOT ---
         "chat_title": "💬 Asistente Virtual",
@@ -538,11 +545,18 @@ LANGUAGES = {
         "lbl_conds_added": "Conditions (AND):",
         "warn_no_name": "Rule name missing.",
         "btn_save_rule": "💾 Save Rule",
+        "btn_update_rule": "💾 Update Rule",
         "success_saved": "Saved!",
         "info_no_rules": "No rules.",
         "btn_toggle_rule": "Enable/Disable",
         "btn_delete_rule": "Delete",
         "btn_close_editor": "Close Editor",
+
+        # --- ACTION BUTTONS (RULES) ---
+        "btn_edit_rule": "✏️ Edit",
+        "btn_deactivate_rule": "⚪ Deactivate",
+        "btn_activate_rule": "🟢 Activate",
+        "btn_delete_rule_icon": "🗑️",
 
         # --- 10. CHATBOT ---
         "chat_title": "💬 Virtual Assistant",
