@@ -29,11 +29,12 @@ def get_default_rules():
         {
             "id": "rule_sys_001",
             "enabled": True,
-            "order": 10,
+            "order": 10, # Se ejecuta al final (Gana prioridad)
             "priority": "🚩 Maxima Prioridad",
             "reason": "Sistema: Pay Group Crítico",
             "conditions": [
-                {"column": "Pay Group", "operator": "is", "value": "DIST"}
+                # Usamos 'contains' con tubería (|) para que funcione como un 'OR' (Regex)
+                {"column": "Pay Group", "operator": "contains", "value": "DIST|INTERCOMPANY|PAYROLL|RENTS|SCF"}
             ]
         },
         {
@@ -89,6 +90,8 @@ def _evaluate_condition(df: pd.DataFrame, condition: dict) -> pd.Series:
     val_str = str(val)
 
     if op == "contains":
+        # case=False hace que ignore mayúsculas/minúsculas
+        # regex=True es el default en pandas str.contains, permitiendo el uso de '|'
         return series_str.str.contains(val_str, case=False, na=False)
     elif op == "is":
         # Comparación exacta insensible a mayúsculas
