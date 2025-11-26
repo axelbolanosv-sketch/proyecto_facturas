@@ -2,7 +2,7 @@
 """
 Servicio de Reglas de Negocio (Rules Service).
 
-Motor de reglas de negocio (Versión 2.1 - Prioridad Inversa).
+Motor de reglas de negocio (Versión 2.2 - Corrección Pay Groups).
 Permite evaluar reglas complejas con múltiples condiciones y operadores lógicos
 para asignar prioridades automáticamente.
 
@@ -29,12 +29,27 @@ def get_default_rules():
         {
             "id": "rule_sys_001",
             "enabled": True,
-            "order": 10, # Se ejecuta al final (Gana prioridad)
+            "order": 10, # Se ejecuta al final (Gana prioridad ante reglas generales)
             "priority": "🚩 Maxima Prioridad",
             "reason": "Sistema: Pay Group Crítico",
             "conditions": [
                 # Usamos 'contains' con tubería (|) para que funcione como un 'OR' (Regex)
                 {"column": "Pay Group", "operator": "contains", "value": "DIST|INTERCOMPANY|PAYROLL|RENTS|SCF"}
+            ]
+        },
+        # --- NUEVA REGLA CORREGIDA: BAJO RIESGO ---
+        {
+            "id": "rule_sys_003",
+            "enabled": True,
+            "order": 10, # Igual importancia que la crítica (Nivel Sistema)
+            "priority": "Minima", # Equivale a Riesgo Mínimo / Low Risk
+            "reason": "Sistema: Pay Group Riesgo Mínimo",
+            "conditions": [
+                # Regex Actualizado: 'PAY\s*GROUP' busca "PAY" seguido de 0 o más espacios y "GROUP".
+                # Esto detecta tanto "PAY GROUP 1" (como en la imagen) como "PAYGROUP 1".
+                # [1-7] limita la búsqueda a los grupos del 1 al 7.
+                # (?!\d) evita falsos positivos como "PAY GROUP 10".
+                {"column": "Pay Group", "operator": "contains", "value": r"PAY\s*GROUP [1-7](?!\d)"}
             ]
         },
         {
@@ -91,8 +106,8 @@ def _evaluate_condition(df: pd.DataFrame, condition: dict) -> pd.Series:
 
     if op == "contains":
         # case=False hace que ignore mayúsculas/minúsculas
-        # regex=True es el default en pandas str.contains, permitiendo el uso de '|'
-        return series_str.str.contains(val_str, case=False, na=False)
+        # regex=True es el default en pandas str.contains, permitiendo el uso de '|' y '\s'
+        return series_str.str.contains(val_str, case=False, na=False, regex=True)
     elif op == "is":
         # Comparación exacta insensible a mayúsculas
         return series_str.str.lower() == val_str.lower()
