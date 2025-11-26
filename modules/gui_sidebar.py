@@ -101,6 +101,11 @@ def render_sidebar(lang: str, df_loaded: bool, cols_ui: list, map_en: dict, cols
     Returns:
         list: Lista de archivos subidos (UploadedFile) si el usuario cargó nuevos archivos.
     """
+    
+    # --- DEFINICIÓN CRÍTICA DE VARIABLES ---
+    # Recuperamos las opciones de autocompletado al inicio para usarlas en cualquier parte del sidebar
+    auto_opts = st.session_state.autocomplete_options
+
     # --- Sección: Perfil y Auditoría ---
     st.sidebar.markdown("### 👤 Perfil & Auditoría")
     
@@ -188,9 +193,8 @@ def render_sidebar(lang: str, df_loaded: bool, cols_ui: list, map_en: dict, cols
                      st.session_state.filtros_activos = [f for f in st.session_state.filtros_activos if f['columna'] != 'Priority_Reason']
                      st.rerun()
 
-        # 2. Filtros Estándar (Dinámicos)
+        # 2. Filtros Estándar (RESTITUIDOS)
         st.sidebar.markdown(f"### {get_text(lang, 'add_filter_header')}")
-        auto_opts = st.session_state.autocomplete_options
         cols_visual = []
         
         # Generamos nombres visuales (con icono 📋 si tienen autocompletado)
@@ -202,19 +206,19 @@ def render_sidebar(lang: str, df_loaded: bool, cols_ui: list, map_en: dict, cols
                 cols_visual.append(col)
 
         # Selectores de columna y valor
-        col_sel_visual = st.selectbox(get_text(lang, 'column_select'), [""] + cols_visual, key='filter_col_select')
+        col_sel_visual = st.sidebar.selectbox(get_text(lang, 'column_select'), [""] + cols_visual, key='filter_col_select')
         col_sel_clean = col_sel_visual.replace(" 📋", "")
         col_en = map_en.get(col_sel_clean, col_sel_clean)
         
         # Determinar si mostramos dropdown (select) o campo de texto (input)
         available_opts = auto_opts.get(col_en, [])
         if available_opts:
-            st.selectbox(get_text(lang, 'column_select_value'), [""] + sorted(available_opts), key='filter_val_select')
+            st.sidebar.selectbox(get_text(lang, 'column_select_value'), [""] + sorted(available_opts), key='filter_val_select')
         else:
-            st.text_input(get_text(lang, 'search_text'), key='filter_val_text')
+            st.sidebar.text_input(get_text(lang, 'search_text'), key='filter_val_text')
 
         # Botón para añadir filtro
-        if st.button(get_text(lang, 'add_filter_button')):
+        if st.sidebar.button(get_text(lang, 'add_filter_button')):
             val = st.session_state.filter_val_select if available_opts else st.session_state.filter_val_text
             if col_sel_clean and val:
                 st.session_state.filtros_activos.append({"columna": col_en, "valor": val})

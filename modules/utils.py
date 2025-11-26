@@ -5,7 +5,7 @@ Módulo de Utilidades Generales y Gestión de Estado.
 Este módulo agrupa funciones esenciales para el ciclo de vida de la aplicación,
 incluyendo:
 1. Inicialización y gestión del estado de sesión (Session State).
-2. Carga de estilos visuales (CSS).
+2. Carga de estilos visuales (CSS) compatible con Modo Oscuro.
 3. Procesamiento masivo de archivos Excel (lectura, limpieza y normalización).
 4. Lógica auxiliar para actualización de estados de fila.
 """
@@ -15,7 +15,8 @@ import pandas as pd
 import io
 import numpy as np 
 from modules.translator import get_text
-from modules.rules_service import get_default_rules 
+# --- CAMBIO: Importamos el motor de reglas para usarlo en la carga inicial ---
+from modules.rules_service import get_default_rules, apply_priority_rules 
 
 # --- 1. Inicializar el 'Session State' ---
 def initialize_session_state():
@@ -80,110 +81,110 @@ def initialize_session_state():
 def load_custom_css():
     """Carga e inyecta el CSS personalizado en la aplicación Streamlit.
     
-    Define variables de color corporativas y reglas específicas para:
-    - Resaltar celdas editadas o con prioridades altas.
-    - Estilizar botones, tablas y la barra lateral.
-    - Ocultar elementos nativos no deseados (como el widget de estado).
+    MEJORA DARK MODE:
+    Utiliza variables CSS nativas de Streamlit (var(--text-color), etc.) para 
+    adaptarse automáticamente al tema claro/oscuro del usuario.
     """
     st.markdown(
         """
         <style>
+        /* --- VARIABLES DE TEMA ADAPTATIVAS --- */
+        :root {
+            /* Colores fijos de marca */
+            --brand-blue: #004A99;
+            --brand-red: #E30613;
+            --brand-red-hover: #C0000A;
+            --brand-green: #008000;
+            --brand-green-hover: #006400;
+            --brand-orange: #FFA500;
+            
+            /* Variables que se adaptan al tema (Usando variables de Streamlit) */
+            --bg-color: var(--background-color);
+            --text-color: var(--text-color);
+            --card-bg: var(--secondary-background-color);
+            --border-color: rgba(49, 51, 63, 0.2); 
+        }
+
         /* --- CSS PARA RESALTAR CELDAS VACÍAS --- */
         [data-testid="stDataEditor"] [data-kind="cell"]:has(> .glide-cell-div:empty) {
-            background-color: #FFF3B3 !important; /* Amarillo pálido */
+            background-color: rgba(255, 243, 179, 0.4) !important; /* Amarillo translúcido */
         }
         
         /* Resalta ceros explícitos */
         [data-testid="stDataEditor"] [data-kind="cell"] > .glide-cell-div > .glide-text-content[data-content="0"] {
-            background-color: #FFF3B3 !important;
-            color: #b0a06c; /* Texto más claro para el '0' */
+            background-color: rgba(255, 243, 179, 0.4) !important;
+            color: var(--text-color); 
+            opacity: 0.7;
         }
 
         /* --- CSS PARA RESALTAR FILA DE ALTA PRIORIDAD --- */
-        /* Detecta texto 'Maxima Prioridad' y colorea la fila completa en rojo suave */
+        /* Detecta texto 'Maxima Prioridad'.
+           IMPORTANTE: Forzamos color negro en el texto para asegurar contraste
+           sobre el fondo rojo, incluso en Dark Mode. */
+        
         [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="Maxima Prioridad"]),
         [data-testid="stDataEditor"] [data-kind="row"]:has(div[data-content="🚩 Maxima Prioridad"]) {
-            background-image: linear-gradient(to right, #FFDDDD, #FFDDDD) !important;
-            color: #660000 !important;
+            background-color: rgba(255, 221, 221, 0.3) !important; /* Rojo muy suave translúcido */
         }
-        /* Colorea la celda específica de prioridad en rojo más intenso */
+
+        /* Celda específica de prioridad */
         [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="Maxima Prioridad"]), 
         [data-testid="stDataEditor"] [data-kind="cell"]:has(div[data-content="🚩 Maxima Prioridad"]) {
             font-weight: 800 !important;
-            background-color: #FFC0C0 !important;
-            color: black !important;
+            background-color: #FFC0C0 !important; /* Rojo sólido */
+            color: black !important; /* Texto negro forzado para legibilidad */
         }
 
-        /* --- VARIABLES DE TEMA (COLORES) --- */
-        :root {
-            --color-primario-azul: #004A99;
-            --color-primario-rojo: #E30613;
-            --color-primario-rojo-hover: #C0000A;
-            --color-fondo: #F0F4F8;
-            --color-fondo-tarjeta: #FFFFFF;
-            --color-texto-principal: #0A1729;
-            --color-texto-secundario: #5A6D7E; /* Ajustado */
-            --color-borde: #D0D9E3;
-            --color-naranja: #FFA500;
-            --color-naranja-hover: #E69500;
-            --color-verde: #008000; /* Verde para descargas */
-            --color-verde-hover: #006400;
-        }
-        
-        /* Aplicación de variables a elementos globales */
-        .stApp { background-color: var(--color-fondo); color: var(--color-texto-principal); }
-        [data-testid="stSidebar"] { background-color: var(--color-fondo-tarjeta); border-right: 1px solid var(--color-borde); box-shadow: 2px 0px 10px rgba(0,0,0,0.05); }
+        /* --- ESTILOS GENERALES --- */
         
         /* Títulos */
-        .stApp h1 { color: var(--color-primario-azul); font-weight: 800; }
-        .stApp h2 { color: var(--color-primario-azul); border-bottom: 2px solid var(--color-borde); padding-bottom: 5px; }
-        .stApp h3, [data-testid="stSidebar"] h3 { color: var(--color-texto-principal); font-weight: 600; }
-        [data-testid="stSidebar"] h2 { color: var(--color-primario-azul); border-bottom: none; }
-
+        .stApp h1, .stApp h2 { color: var(--brand-blue) !important; }
+        .stApp h3 { color: var(--text-color); }
+        
         /* Botones Estándar (Rojos) */
-        .stButton > button { background-color: var(--color-primario-rojo); color: white; border: none; border-radius: 5px; padding: 10px 15px; font-weight: 600; transition: 0.2s ease; cursor: pointer; }
-        .stButton > button:hover { background-color: var(--color-primario-rojo-hover); color: white; }
-        .stButton > button:focus { box-shadow: 0 0 0 3px rgba(227, 6, 19, 0.4); }
+        .stButton > button { 
+            background-color: var(--brand-red); 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            transition: 0.2s ease; 
+        }
+        .stButton > button:hover { background-color: var(--brand-red-hover); color: white; }
 
         /* Botones de Acción Especial (Azul para Commit) */
-        .stButton[key*="commit_changes"] > button { background-color: var(--color-primario-azul); }
+        .stButton[key*="commit_changes"] > button { background-color: var(--brand-blue); }
         .stButton[key*="commit_changes"] > button:hover { background-color: #003366; }
         
         /* Botones de Reset (Naranja) */
-        .stButton[key*="reset_changes_button"] > button { background-color: var(--color-naranja); color: white; }
-        .stButton[key*="reset_changes_button"] > button:hover { background-color: var(--color-naranja-hover); color: white; }
+        .stButton[key*="reset_changes_button"] > button { background-color: var(--brand-orange); color: white; }
         
-        /* Botones de Restauración (Borde Rojo) */
-        .stButton[key*="restore_pristine"] > button { background-color: transparent; color: var(--color-primario-rojo); border: 1px solid var(--color-primario-rojo); }
-        .stButton[key*="restore_pristine"] > button:hover { background-color: rgba(227, 6, 19, 0.05); color: var(--color-primario-rojo-hover); }
+        /* Botones de Restauración (Borde) */
+        .stButton[key*="restore_pristine"] > button { 
+            background-color: transparent; 
+            color: var(--brand-red); 
+            border: 1px solid var(--brand-red); 
+        }
         
-        /* Botones Pequeños (Filtros) */
-        .stButton[key*="quitar_"] > button { background-color: #e0eaf3; color: #004A99; padding: 3px 10px; border-radius: 12px; margin-right: 5px; margin-bottom: 5px; display: inline-block; font-size: 0.9em; border: 1px solid #c0d3e8; font-weight: 400; }
-        .stButton[key*="quitar_"] > button:hover { background-color: #c0d3e8; color: #004A99; border-color: #004A99; }
+        /* Botones Pequeños (Chips de filtros) */
+        .stButton[key*="quitar_"] > button { 
+            background-color: var(--card-bg); 
+            color: var(--brand-blue); 
+            padding: 3px 10px; 
+            border-radius: 12px; 
+            border: 1px solid var(--border-color); 
+            font-size: 0.9em;
+        }
         
-        /* Inputs de formulario */
-        .stTextInput > div > div > input, .stSelectbox > div > div, .stFileUploader > div { border: 1px solid var(--color-borde); background-color: var(--color-fondo-tarjeta); border-radius: 5px; }
-        .stTextInput > div > div > input:focus, .stSelectbox > div > div:focus-within { border-color: var(--color-primario-azul); box-shadow: 0 0 0 2px rgba(0, 74, 153, 0.3); }
-        
-        /* Tablas */
-        [data-testid="stDataFrame"], [data-testid="stDataEditor"] { box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; border-radius: 8px; }
-        .col-header { background-color: var(--color-primario-azul); color: white; font-weight: 600; }
-        .stDataEditor .col-header { background-color: var(--color-primario-azul); color: white; font-weight: 600; }
-        
-        /* Alertas */
-        .stAlert[data-testid="stInfo"] { background-color: var(--color-fondo-tarjeta); border: 1px dashed var(--color-borde); color: var(--color-texto-secundario); border-radius: 8px; }
+        /* Inputs de formulario - Usar variables nativas */
+        .stTextInput > div > div > input, .stSelectbox > div > div { 
+            border-radius: 5px; 
+        }
         
         /* Botón de Descarga (Verde) */
-        [data-testid="stDownloadButton"] > button { background-color: var(--color-verde); color: white; border: none; border-radius: 5px; padding: 10px 15px; font-weight: 600; transition: 0.2s ease; cursor: pointer; }
-        [data-testid="stDownloadButton"] > button:hover { background-color: var(--color-verde-hover); color: white; }
-        [data-testid="stDownloadButton"] > button:focus { box-shadow: 0 0 0 3px rgba(0, 128, 0, 0.4); }
+        [data-testid="stDownloadButton"] > button { background-color: var(--brand-green); color: white; border: none; }
+        [data-testid="stDownloadButton"] > button:hover { background-color: var(--brand-green-hover); color: white; }
         
-        /* Botón Toggle Columnas */
-        .stButton[key*="toggle_cols"] > button { background-color: transparent; color: var(--color-primario-azul); border: 1px solid var(--color-primario-azul); }
-        .stButton[key*="toggle_cols"] > button:hover { background-color: rgba(0, 74, 153, 0.05); }
-        
-        /* Utilidades */
-        [data-testid="stMetricHelpIcon"] { cursor: help; }
+        /* Ocultar Widget de estado de Streamlit (arriba derecha) */
         [data-testid="stStatusWidget"] { display: none !important; }
         </style>
         """,
@@ -296,22 +297,9 @@ def load_and_process_files(uploaded_files, lang):
             if date_cols:
                 for col in date_cols: df_processed[col] = df_check[col]
 
-            # --- Lógica Legacy: Pay Group (Compatibilidad) ---
-            if 'Pay Group' in df_processed.columns:
-                pay_group_searchable = df_processed['Pay Group'].astype(str).str.upper()
-                # Palabras clave para alta prioridad
-                mask_high = pay_group_searchable.str.contains('DIST|INTERCOMPANY|PAYROLL|RENTS|SCF', na=False)
-                # Palabras clave para baja prioridad
-                mask_low = pay_group_searchable.str.contains('PAYGROUP|PAY GROUP|GNTD', na=False)
-
-                if 'Priority' not in df_processed.columns:
-                    df_processed['Priority'] = "" 
-            
-                conditions = [mask_high, mask_low]
-                choices = ["🚩 Maxima Prioridad", "Minima"] # Etiquetas estándar
-                
-                # np.select es mucho más rápido que .apply
-                df_processed['Priority'] = np.select(conditions, choices, default=df_processed['Priority'])
+            # --- CORRECCIÓN: Aplicar Motor de Reglas en la carga inicial ---
+            # Esto asegura que Priority_Reason se cree desde el principio y el filtro del sidebar no "parpadee"
+            df_processed = apply_priority_rules(df_processed)
             
             # 5. Cálculo inicial de estado de fila
             df_processed = recalculate_row_status(df_processed, lang)

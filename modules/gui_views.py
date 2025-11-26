@@ -457,6 +457,20 @@ def render_detailed_view(lang, df_filtered, df_master, col_map, all_cols):
     df_disp = df_v.copy()
     df_disp.columns = [translate_column(lang, c) if c != "Seleccionar" else c for c in df_disp.columns]
     
+    # --- STICKY COLUMN: REORDENAMIENTO DE COLUMNAS ---
+    # Para simular "Fijar Prioridad", la movemos a la posición 1 (después de "Seleccionar")
+    # Streamlit congela automáticamente el índice. Como esto es una columna de datos,
+    # ponerla al principio es la mejor aproximación nativa.
+    current_cols = list(df_disp.columns)
+    prio_col_name = translate_column(lang, "Priority")
+    
+    if prio_col_name in current_cols:
+        # Quitamos "Seleccionar" y "Priority" de donde estén
+        other_cols = [c for c in current_cols if c != "Seleccionar" and c != prio_col_name]
+        # Reconstruimos: Seleccionar -> Prioridad -> Resto
+        new_order = ["Seleccionar", prio_col_name] + other_cols
+        df_disp = df_disp[new_order]
+
     # Marcar visualmente filas de alta prioridad en el índice
     if 'Priority' in df_filtered.columns:
         hi = df_filtered.loc[df_disp.index, 'Priority'].astype(str).str.contains("Maxima")
