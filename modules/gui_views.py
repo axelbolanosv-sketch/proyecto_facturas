@@ -1,392 +1,521 @@
-# modules/gui_views.py (VERSIÓN CON LÓGICA DE DOBLE GUARDADO Y CORRECCIÓN DE NAMEERROR)
-# Contiene la lógica para renderizar el contenido de la página principal.
+# modules/gui_views.py
+"""
+Módulo de Vistas Principales y Modales.
+
+Este módulo contiene la lógica de renderizado de:
+1. Diálogos Modales (Buscar/Reemplazar, Edición Masiva).
+2. Dashboard de KPIs.
+3. Editor de Datos Principal (Fragmento optimizado).
+4. Vistas Detallada y Agrupada.
+"""
 
 import streamlit as st
 import pandas as pd
-import json 
+import json
 import numpy as np
 from modules.translator import get_text, translate_column
-from modules.gui_utils import to_excel
+from modules.utils import to_excel, recalculate_row_status
+from modules.rules_service import apply_priority_rules
+from modules.audit_service import log_general_change
+import streamlit_hotkeys as hotkeys
 
-# --- 1. RENDER FILTROS ACTIVOS ---
-def render_active_filters(lang):
-    """Muestra los filtros activos y permite eliminarlos.
+# Límite para desactivar tooltips y mejorar rendimiento en tablas grandes
+MAX_ROWS_FOR_TOOLTIPS = 1500 
 
-    Args:
-        lang (str): El código de idioma actual (ej. 'es') para la traducción.
-    """
-    st.markdown(f"## {get_text(lang, 'active_filters_header')}")
-    
-    if not st.session_state.filtros_activos:
-        st.info(get_text(lang, 'no_filters_applied'))
-        return 
-
-    filtros_a_eliminar = -1
-    num_filtros = len(st.session_state.filtros_activos)
-    num_columnas = max(1, min(num_filtros, 5)) 
-    cols_filtros = st.columns(num_columnas)
-    
-    for i, filtro in enumerate(st.session_state.filtros_activos):
-        col_index = i % num_columnas
-        with cols_filtros[col_index]:
-            col_ui = translate_column(lang, filtro['columna']) 
-            label_boton = f"{col_ui}: {filtro['valor']}  ✕"
-            if st.button(label_boton, key=f"quitar_{i}", help=f"Quitar filtro {i+1}", type="primary"):
-                filtros_a_eliminar = i
-    
-    if st.button(get_text(lang, 'clear_all_button'), key="limpiar_todos"):
-        st.session_state.filtros_activos = []
-        st.rerun() 
-    
-    if filtros_a_eliminar > -1:
-        st.session_state.filtros_activos.pop(filtros_a_eliminar)
-        st.rerun() 
-
-# --- 2. RENDER KPIS ---
-def render_kpi_dashboard(lang, resultado_df):
-    """Muestra el dashboard de KPIs.
+# --- MODAL BUSCAR Y REEMPLAZAR ---
+@st.dialog("🔍 Buscar y Reemplazar")
+def modal_find_replace(col_map, lang):
+    """Renderiza el diálogo modal para buscar y reemplazar valores en una columna.
 
     Args:
-        lang (str): El código de idioma actual (ej. 'es') para la traducción.
-        resultado_df (pd.DataFrame): El DataFrame filtrado (del 'staging').
+        col_map (dict): Mapeo de nombres de columnas (UI -> Real).
+        lang (str): Idioma actual.
     """
-    st.markdown(f"## {get_text(lang, 'kpi_header')}")
+    st.markdown("Esta herramienta buscará y reemplazará valores en la **Columna Objetivo**.")
     
-    try:
-        totales_numericos = pd.to_numeric(resultado_df['Total'], errors='coerce').dropna()
-    except KeyError:
-        totales_numericos = pd.Series(dtype='float64')
-        st.warning("No se encontró la columna 'Total' para los KPIs.")
+    # Preparar lista de columnas
+    cols_raw = [c for c in col_map.keys() if "Seleccionar" not in c]
+    cols_vis = []
+    auto_opts = st.session_state.autocomplete_options
     
-    col1, col2, col3 = st.columns(3)
-    
-    col1.metric(
-        label=get_text(lang, 'kpi_total_invoices'), 
-        value=len(resultado_df)
-    )
-    col2.metric(
-        label=get_text(lang, 'kpi_total_amount'), 
-        value=f"${totales_numericos.sum():,.2f}",
-        help=get_text(lang, 'kpi_total_amount_help')
-    )
-    col3.metric(
-        label=get_text(lang, 'kpi_avg_amount'), 
-        value=f"${totales_numericos.mean():,.2f}" if not totales_numericos.empty else "$0.00",
-        help=get_text(lang, 'kpi_avg_amount_help')
-    )
-
-# --- 3. RENDER VISTA DETALLADA (EDITOR) ---
-def render_detailed_view(lang, resultado_df_filtrado, df_master_copy, col_map_ui_to_en, todas_las_columnas_en):
-    """Muestra la vista detallada con el editor de datos y botones de descarga.
-
-    Args:
-        lang (str): El código de idioma actual (ej. 'es').
-        resultado_df_filtrado (pd.DataFrame): El DF 'staging' ya filtrado.
-        df_master_copy (pd.DataFrame): La copia completa de 'st.session_state.df_staging'.
-        col_map_ui_to_en (dict): Mapeo de nombres UI -> nombres EN.
-        todas_las_columnas_en (list): Lista de todos los nombres de columnas EN.
-    """
-    
-    if not st.session_state.columnas_visibles:
-            st.warning(get_text(lang, 'visible_cols_warning'))
-            return
-
-    columnas_a_mostrar_en = st.session_state.columnas_visibles
-    columnas_finales = [col for col in columnas_a_mostrar_en if col in resultado_df_filtrado.columns]
-    
-    if not columnas_finales:
-        st.warning(get_text(lang, 'visible_cols_warning'))
-        return
-
-    # --- INICIO DE LA CORRECCIÓN DEL NAMEERROR ---
-    # 'df_vista_detallada' almacena la vista filtrada con nombres de columna EN
-    # Esta es la variable que faltaba y causaba el NameError
-    df_vista_detallada = resultado_df_filtrado[columnas_finales].copy()
-    
-    # 'df_display' se basa en df_vista_detallada pero con nombres UI para el editor
-    df_display = df_vista_detallada.copy()
-    df_display.columns = [translate_column(lang, col) for col in df_display.columns]
-    # --- FIN DE LA CORRECCIÓN DEL NAMEERROR ---
-    
-    # --- Configuración de Columnas (Autorrellenado) ---
-    configuracion_columnas = {}
-    columnas_autocompletar_en = [
-        "Vendor Name", "Status", "Assignee", 
-        "Operating Unit Name", "Pay Status", "Document Type"
-    ]
-    
-    for col_en in columnas_autocompletar_en:
-        if col_en in df_master_copy.columns:
-            try:
-                opciones = sorted(df_master_copy[col_en].astype(str).unique())
-                col_ui = translate_column(lang, col_en)
-                configuracion_columnas[col_ui] = st.column_config.SelectboxColumn(
-                    f"{col_ui} (Autocompletar)",
-                    help=get_text(lang, 'autocomplete_help'),
-                    options=opciones,
-                    required=False
-                )
-            except Exception as e:
-                st.warning(f"No se pudo generar autorrellenado para '{col_en}': {e}")
-    
-    # --- Lógica de Hash Estable ---
-    filtros_json_string = json.dumps(st.session_state.filtros_activos, sort_keys=True)
-    columnas_tuple = tuple(st.session_state.columnas_visibles)
-    current_view_hash = hash((filtros_json_string, columnas_tuple))
-
-    # --- Lógica de Estado ---
-    if 'editor_state' not in st.session_state or \
-        st.session_state.current_view_hash != current_view_hash:
+    for c in cols_raw:
+        cen = col_map.get(c, c)
+        # Añadir icono si tiene autocompletado
+        cols_vis.append(f"{c} 📋" if cen in auto_opts and auto_opts[cen] else c)
         
-        st.session_state.editor_state = df_display.copy() 
-        st.session_state.current_view_hash = current_view_hash
-    
-    # --- LÓGICA DE AÑADIR FILA ---
-    def callback_add_row():
-        """
-        Callback para el botón 'Añadir Fila'.
-        Añade una fila al 'editor_state' con un índice único.
-        """
-        df_editado = st.session_state.editor_state
-        
-        max_index = df_master_copy.index.max()
-        if not df_editado.empty:
-            max_index = max(max_index, df_editado.index.max())
-        new_index = max_index + 1
-
-        default_values = {}
-        for col in df_editado.columns:
-            col_en = col_map_ui_to_en.get(col, col)
-            col_original_dtype = df_master_copy[col_en].dtype if col_en in df_master_copy.columns else 'object'
-            if pd.api.types.is_numeric_dtype(col_original_dtype):
-                default_values[col] = 0
-            else:
-                default_values[col] = ""
-        
-        new_row_df = pd.DataFrame(default_values, index=[new_index])
-        
-        st.session_state.editor_state = pd.concat(
-            [new_row_df, df_editado], 
-            ignore_index=False 
-        )
-    
-    # --- Layout para los botones de control ---
-    st.markdown("#### Acciones del Editor")
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.button(
-            get_text(lang, 'add_row_button'),
-            on_click=callback_add_row,
-            use_container_width=True
-        )
-
-    # --- LÓGICA DE BOTÓN 1: Guardar Borrador (Actualiza Archivo 2) ---
-    with col2:
-        save_button_pressed = st.button(
-            get_text(lang, 'save_changes_button'),
-            use_container_width=True,
-            help=get_text(lang, 'save_changes_help'),
-            type="primary" 
-        )
-    
-    # --- LÓGICA DE BOTÓN 2: Guardar Estable (Actualiza Archivo 1 desde 2) ---
-    with col3:
-        commit_button_pressed = st.button(
-            get_text(lang, 'commit_changes_button'),
-            use_container_width=True,
-            help=get_text(lang, 'commit_changes_help'),
-            key="commit_changes" 
-        )
-        
-    # --- LÓGICA DE BOTÓN 3: Revertir a Estable (Actualiza Archivo 2 desde 1) ---
-    with col4:
-        if st.button(
-            get_text(lang, 'reset_changes_button'),
-            use_container_width=True,
-            help=get_text(lang, 'reset_changes_help')
-        ):
-            if st.session_state.df_original is not None:
-                st.session_state.df_staging = st.session_state.df_original.copy()
-            
-            st.session_state.editor_state = None
-            st.session_state.current_view_hash = None
-            st.rerun()
-
-    st.warning(get_text(lang, 'editor_info_help_add_row'))
-
-    # --- El Widget Data Editor ---
-    editor_return_value = st.data_editor(
-        st.session_state.editor_state,
-        column_config=configuracion_columnas, 
-        num_rows="dynamic",
-        width='stretch', 
-        height=600
-    )
-    
-    # --- LÓGICA DE GUARDADO (Botón 1: Guardar Borrador) ---
-    if save_button_pressed:
-        
-        df_edited_view_ui = editor_return_value.copy()
-        
-        col_status_en = "Row Status"
-        col_status_ui = translate_column(lang, col_status_en)
-        if col_status_ui in df_edited_view_ui.columns:
-            cols_to_check = [col for col in df_edited_view_ui.columns if col != col_status_ui]
-            df_check = df_edited_view_ui[cols_to_check].fillna("").astype(str)
-            blank_mask = (df_check == "") | (df_check == "0")
-            incomplete_rows = blank_mask.any(axis=1)
-            df_edited_view_ui[col_status_ui] = np.where(
-                incomplete_rows,
-                get_text(lang, 'status_incomplete'),
-                get_text(lang, 'status_complete')
-            )
-        
-        df_to_merge_en = df_edited_view_ui.copy()
-        df_to_merge_en.columns = [col_map_ui_to_en.get(col_ui, col_ui) for col_ui in df_to_merge_en.columns]
-
-        df_master_staging = st.session_state.df_staging.copy()
-
-        existing_rows_en = df_to_merge_en[df_to_merge_en.index.isin(df_master_staging.index)]
-        new_rows_en = df_to_merge_en[~df_to_merge_en.index.isin(df_master_staging.index)]
-        
-        df_master_staging.update(existing_rows_en)
-        df_master_staging = pd.concat([new_rows_en, df_master_staging])
-        
-        st.session_state.df_staging = df_master_staging.copy()
-        
-        st.session_state.editor_state = df_edited_view_ui.copy()
-        
-        st.success(get_text(lang, 'save_success_message'))
-        st.rerun()
-
-    # --- LÓGICA DE COMMIT (Botón 2: Guardar Estable) ---
-    if commit_button_pressed:
-        st.session_state.df_original = st.session_state.df_staging.copy()
-        st.success(get_text(lang, 'commit_success_message'))
+    col_sel_vis = st.selectbox("Columna Objetivo:", cols_vis)
+    col_sel_ui = col_sel_vis.replace(" 📋", "")
+    col_en = col_map.get(col_sel_ui, col_sel_ui)
     
     st.markdown("---")
+    opts = auto_opts.get(col_en, [])
+
+    # Controles de Búsqueda y Reemplazo (Dual: Manual o Selectbox)
+    c1, c2 = st.columns(2)
+    with c1:
+        find_txt = ""
+        if opts:
+            use_manual_find = st.checkbox("✍️ Manual (Buscar)", key="chk_mf")
+            find_txt = st.text_input("Buscar:") if use_manual_find else st.selectbox("Buscar:", [""] + sorted(opts), key="sel_find")
+        else:
+            find_txt = st.text_input("Buscar:")
+
+    with c2:
+        replace_val = ""
+        if opts:
+            use_manual_rep = st.checkbox("✍️ Manual (Reemplazar)", key="chk_mr")
+            replace_val = st.text_input("Reemplazar:") if use_manual_rep else st.selectbox("Reemplazar:", [""] + sorted(opts), key="sel_rep")
+        else:
+            replace_val = st.text_input("Reemplazar:")
+
+    # Filtros adicionales opcionales
+    active_filters = {}
+    with st.expander("🎯 Filtros Adicionales", expanded=False):
+        filter_opts = [c for c in cols_vis if c != col_sel_vis]
+        sel_filters = st.multiselect("Condiciones:", filter_opts)
+        for f_vis in sel_filters:
+            f_ui = f_vis.replace(" 📋", "")
+            f_en = col_map.get(f_ui, f_ui)
+            f_opts = auto_opts.get(f_en, [])
+            if f_opts:
+                val = st.selectbox(f"'{f_ui}' ==", f_opts, key=f"f_{f_en}")
+                if val: active_filters[f_en] = {"val": val, "type": "exact"}
+            else:
+                val = st.text_input(f"'{f_ui}' contiene:", key=f"f_{f_en}")
+                if val: active_filters[f_en] = {"val": val, "type": "contains"}
+
+    st.markdown("---")
+    mode = st.radio("Modo:", ["Coincidencia Exacta", "Contiene"], horizontal=True)
     
-    # --- Descargas y Restauración Original ---
-    col_dl1, col_dl2, col_restore = st.columns([0.3, 0.3, 0.4])
+    # Acción de Reemplazo
+    if st.button("🚀 Reemplazar", type="primary", use_container_width=True):
+        if not find_txt:
+            st.error("Ingrese valor a buscar.")
+        else:
+            df = st.session_state.df_staging.copy()
+            if col_en in df.columns:
+                # 1. Crear Máscara Principal (Búsqueda)
+                if mode == "Coincidencia Exacta":
+                    mask_main = (df[col_en].astype(str) == str(find_txt)) 
+                else:
+                    mask_main = (df[col_en].astype(str).str.contains(str(find_txt), case=False, na=False))
+                
+                # 2. Aplicar Filtros Adicionales (AND)
+                mask_filters = pd.Series(True, index=df.index)
+                for f_col, f_data in active_filters.items():
+                    if f_col in df.columns:
+                        if f_data["type"] == "exact": 
+                            mask_filters &= (df[f_col].astype(str) == str(f_data["val"]))
+                        else: 
+                            mask_filters &= (df[f_col].astype(str).str.contains(str(f_data["val"]), case=False, na=False))
 
-    with col_dl1:
-        # --- Descarga de datos EDITADOS (Borrador) ---
-        df_para_descargar_editado = st.session_state.editor_state.copy()
-        df_para_descargar_editado.columns = [
-            col_map_ui_to_en.get(col_ui, col_ui) 
-            for col_ui in df_para_descargar_editado.columns
-        ]
-        excel_data_editada = to_excel(df_para_descargar_editado)
-        st.download_button(
-            label=get_text(lang, 'download_excel_manual_edits_button'), 
-            data=excel_data_editada,
-            file_name="resultado_facturas_BORRADOR.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_excel_editado",
-            use_container_width=True
-        )
-    
-    with col_dl2:
-        # --- Descarga de datos FILTRADOS (Borrador) ---
-        
-        # --- CORRECCIÓN: Usar 'df_vista_detallada' ---
-        # Esta es la variable que definimos en la línea 126
-        excel_data_filtrada = to_excel(df_vista_detallada)
-        st.download_button(
-            label=get_text(lang, 'download_excel_filtered_button'), 
-            data=excel_data_filtrada,
-            file_name="resultados_Filtrados.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_excel_filtrado",
-            use_container_width=True
-        )
+                final_mask = mask_main & mask_filters
+                count = final_mask.sum()
+                
+                if count > 0:
+                    # 3. Ejecutar Reemplazo
+                    final_val = replace_val
+                    # Intentar mantener tipo numérico si aplica
+                    if pd.api.types.is_numeric_dtype(df[col_en].dtype):
+                        try: final_val = pd.to_numeric(replace_val)
+                        except: pass
+                    
+                    df.loc[final_mask, col_en] = final_val
+                    
+                    # 4. Actualizar Autocompletado (Aprender nuevo valor)
+                    if col_en in st.session_state.autocomplete_options:
+                        v_str = str(final_val)
+                        c_opts = st.session_state.autocomplete_options[col_en]
+                        if v_str not in c_opts:
+                            c_opts.append(v_str)
+                            st.session_state.autocomplete_options[col_en] = sorted(c_opts)
 
-    # --- LÓGICA DE BOTÓN 4: Restaurar Archivo Original (Peligro) ---
-    with col_restore:
-        if st.button(
-            get_text(lang, 'restore_pristine_button'),
-            use_container_width=True,
-            help=get_text(lang, 'restore_pristine_help'),
-            key="restore_pristine" 
-        ):
-            if st.session_state.df_pristine is not None:
-                st.session_state.df_original = st.session_state.df_pristine.copy()
-                st.session_state.df_staging = st.session_state.df_pristine.copy()
-            
-            st.session_state.editor_state = None
-            st.session_state.current_view_hash = None
-            st.rerun()
+                    # 5. Auditoría y Recálculo
+                    log_general_change("Find/Replace", "Bulk Replace", f"Editadas {count} filas en '{col_en}'")
+                    
+                    df = apply_priority_rules(df)
+                    df = recalculate_row_status(df, lang) # Recalcular estado tras edición
+                    st.session_state.df_staging = df
+                    
+                    # Limpiar estado del editor para forzar refresco
+                    st.session_state.editor_state = None
+                    st.session_state.current_data_hash = None
+                    if 'editor_key_ver' in st.session_state: st.session_state.editor_key_ver += 1
+                    
+                    st.success(f"✅ {count} cambios.")
+                    st.rerun()
+                else:
+                    st.warning("Sin coincidencias.")
+            else:
+                st.error("Error columna.")
 
-
-# --- 4. RENDER VISTA AGRUPADA ---
-def render_grouped_view(lang, resultado_df, col_map_es_to_en, todas_las_columnas_en):
-    """Muestra la vista de análisis agrupado.
+# --- MODAL EDICIÓN MASIVA ---
+@st.dialog("✏️ Edición Masiva")
+def modal_bulk_edit(indices, col_map, lang):
+    """Renderiza el diálogo modal para editar múltiples filas seleccionadas a la vez.
 
     Args:
-        lang (str): El código de idioma actual (ej. 'es').
-        resultado_df (pd.DataFrame): El DataFrame filtrado (del 'staging').
-        col_map_es_to_en (dict): Mapeo de nombres ES -> nombres EN.
-        todas_las_columnas_en (list): Lista de todos los nombres de columnas EN.
+        indices (list): Lista de índices (IDs de fila) seleccionados.
+        col_map (dict): Mapeo de columnas UI -> Real.
+        lang (str): Idioma.
+    """
+    st.markdown(f"Editando **{len(indices)}** filas.")
+    cols_vis = []
+    auto = st.session_state.autocomplete_options
+    
+    # Preparar lista de columnas editables
+    for c in col_map.keys():
+        if "Seleccionar" not in c and "ID" not in c:
+            cen = col_map[c]
+            cols_vis.append(f"{c} 📋" if cen in auto and auto[cen] else c)
+
+    c_sel_vis = st.selectbox("Columna:", cols_vis)
+    c_ui = c_sel_vis.replace(" 📋", "")
+    c_en = col_map.get(c_ui, c_ui)
+    
+    # Control de valor (Dropdown o Texto)
+    opts = auto.get(c_en, [])
+    val = None
+    if opts:
+        man = st.checkbox("✍️ Manual", key="bm")
+        val = st.text_input("Valor:") if man else st.selectbox("Valor:", opts, index=None)
+    else:
+        val = st.text_input("Valor:")
+
+    if st.button("Aplicar", type="primary"):
+        if val is not None:
+            try:
+                df = st.session_state.df_staging.copy()
+                final = val
+                # Manejo de tipos numéricos
+                if c_en in df.columns and pd.api.types.is_numeric_dtype(df[c_en].dtype):
+                    try: final = pd.to_numeric(val)
+                    except: pass
+                
+                # Aplicación de cambios fila por fila (seguro)
+                cnt = 0
+                for i in indices:
+                    if i in df.index: 
+                        df.at[i, c_en] = final; cnt+=1
+                    elif str(i) in df.index: 
+                        df.at[str(i), c_en] = final; cnt+=1
+                
+                if cnt > 0:
+                    # Actualizar autocompletado
+                    if c_en in st.session_state.autocomplete_options:
+                        v_str = str(final)
+                        curr = st.session_state.autocomplete_options[c_en]
+                        if v_str not in curr:
+                            curr.append(v_str)
+                            st.session_state.autocomplete_options[c_en] = sorted(curr)
+
+                    # Auditoría y Recálculo
+                    log_general_change("Bulk", "Edit", f"{cnt} filas en {c_en}")
+                    
+                    df = apply_priority_rules(df)
+                    df = recalculate_row_status(df, lang)
+                    st.session_state.df_staging = df
+                    
+                    # Refresco de UI
+                    st.session_state.editor_state = None
+                    st.session_state.current_data_hash = None
+                    if 'editor_key_ver' in st.session_state: st.session_state.editor_key_ver += 1
+                    st.success("Hecho.")
+                    st.rerun()
+            except Exception as e: st.error(e)
+        else: st.error("Ingrese valor.")
+
+# --- VISTAS AUXILIARES ---
+def render_active_filters(lang):
+    """Muestra los chips de filtros activos en la parte superior y permite cerrarlos."""
+    st.markdown(f"## {get_text(lang, 'active_filters_header')}")
+    if not st.session_state.filtros_activos:
+        st.info(get_text(lang, 'no_filters_applied')); return
+        
+    # Grid de filtros
+    cols = st.columns(len(st.session_state.filtros_activos))
+    for i, f in enumerate(st.session_state.filtros_activos):
+        # Botón para quitar filtro individual
+        if cols[i].button(f"{translate_column(lang, f['columna'])}: {f['valor']} ✕", key=f"rem_{i}"):
+            st.session_state.filtros_activos.pop(i); st.rerun()
+            
+    # Botón para limpiar todo
+    if st.button(get_text(lang, 'clear_all_button')):
+        st.session_state.filtros_activos = []; st.rerun()
+
+def render_kpi_dashboard(lang, df):
+    """Calcula y muestra métricas clave (Total Facturas, Monto Total, Promedio)."""
+    st.markdown(f"## {get_text(lang, 'kpi_header')}")
+    
+    # Cálculo robusto del total
+    tot = pd.to_numeric(df['Total'], errors='coerce').fillna(0).sum()
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric(get_text(lang, 'kpi_total_invoices'), len(df))
+    c2.metric(get_text(lang, 'kpi_total_amount'), f"${tot:,.2f}")
+    # Evitar división por cero
+    c3.metric(get_text(lang, 'kpi_avg_amount'), f"${(tot/len(df) if len(df) else 0):,.2f}")
+
+# --- FRAGMENTO OPTIMIZADO (Lógica del Editor Principal) ---
+@st.fragment
+def render_editor_fragment(df_disp, col_map, lang, cc, h_data, original_staging_df):
+    """
+    Renderiza la tabla editable principal. Utiliza @st.fragment para aislar 
+    su re-renderizado del resto de la aplicación.
+
+    Maneja: Edición de celdas, Selección de filas, Tooltips, Botones CRUD (Add/Del/Save).
     """
     
-    columnas_agrupables_en = [
-        "Vendor Name", "Status", "Assignee", "Operating Unit Name", 
-        "Pay Status", "Document Type", "Row Status"
-    ]
-    opciones_agrupables_ui = [
-        translate_column(lang, col) 
-        for col in columnas_agrupables_en 
-        if col in todas_las_columnas_en
-    ]
+    if 'editor_key_ver' not in st.session_state: st.session_state.editor_key_ver = 0
     
-    if not opciones_agrupables_ui:
-        st.warning("No hay columnas agrupables (ej. 'Vendor Name', 'Status') en su archivo.")
-        return
+    # Control de caché manual: Si el hash de datos cambia, reseteamos el editor state
+    if 'editor_state' not in st.session_state or st.session_state.current_data_hash != h_data:
+        st.session_state.editor_state = df_disp.copy()
+        st.session_state.current_data_hash = h_data
+        st.session_state.editor_key_ver += 1
+        st.session_state.pending_selection = None 
+        st.rerun()
 
-    col_para_agrupar_ui = st.selectbox(
-        get_text(lang, 'group_by_select'),
-        options=opciones_agrupables_ui,
-        key='group_by_col_select'
-    )
+    # Lógica para "Seleccionar Todos / Ninguno"
+    if st.session_state.get("pending_selection") is not None:
+        val = st.session_state.pop("pending_selection")
+        df_disp["Seleccionar"] = val
+        st.session_state.editor_state = df_disp.copy()
+
+    # Preparación de Tooltips (solo si < MAX_ROWS para performance)
+    styled_data = df_disp 
+    use_tooltips = len(df_disp) <= MAX_ROWS_FOR_TOOLTIPS
     
-    if col_para_agrupar_ui:
-        col_para_agrupar_en = col_map_es_to_en.get(col_para_agrupar_ui, col_para_agrupar_ui)
-        df_agrupado = resultado_df.copy()
-        
-        if 'Total' in df_agrupado.columns:
-            df_agrupado['Total'] = pd.to_numeric(df_agrupado['Total'], errors='coerce')
-        if 'Invoice Date Age' in df_agrupado.columns:
-            df_agrupado['Invoice Date Age'] = pd.to_numeric(df_agrupado['Invoice Date Age'], errors='coerce')
-
-        agg_operations = {'Total': ['sum', 'mean', 'min', 'max', 'count']}
-        if 'Invoice Date Age' in df_agrupado.columns and pd.api.types.is_numeric_dtype(df_agrupado['Invoice Date Age']):
-            agg_operations['Invoice Date Age'] = ['mean']
-
-        try: 
-            df_agrupado_calculado = df_agrupado.groupby(col_para_agrupar_en).agg(agg_operations)
-            
-            col_names_grouped = [
-                get_text(lang, 'group_total_amount'), get_text(lang, 'group_avg_amount'),
-                get_text(lang, 'group_min_amount'), get_text(lang, 'group_max_amount'),
-                get_text(lang, 'group_invoice_count')
-            ]
-            if 'Invoice Date Age' in agg_operations:
-                col_names_grouped.append(get_text(lang, 'group_avg_age'))
-            
-            df_agrupado_calculado.columns = col_names_grouped
-            
-            st.dataframe(df_agrupado_calculado.sort_values(by=get_text(lang, 'group_total_amount'), ascending=False))
-            
-            excel_data = to_excel(df_agrupado_calculado)
-            st.download_button(
-                label=get_text(lang, 'download_excel_button'), 
-                data=excel_data,
-                file_name=f"agrupado_por_{col_para_agrupar_ui}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_excel_agrupado"
-            )
-        except Exception as group_error:
-            st.error(f"Error al agrupar por '{col_para_agrupar_ui}': {group_error}")
+    if use_tooltips:
+        try:
+            tt_df = pd.DataFrame("", index=df_disp.index, columns=df_disp.columns)
+            col_prio_ui = translate_column(lang, "Priority")
+            if col_prio_ui in df_disp.columns:
+                # Limpiar banderas visuales para buscar en el dataframe maestro
+                clean_idxs = df_disp.index.astype(str).str.replace("🚩 ", "")
+                master = original_staging_df
+                if not master.empty:
+                    target_idxs = clean_idxs
+                    # Ajuste de tipo de índice (numérico vs string)
+                    if pd.api.types.is_numeric_dtype(master.index):
+                        target_idxs = pd.to_numeric(clean_idxs, errors='coerce')
+                    # Obtener razones de prioridad
+                    reasons = master.reindex(target_idxs)['Priority_Reason'].fillna("Sin información")
+                    tt_df[col_prio_ui] = reasons.values
+            styled_data = df_disp.style.set_tooltips(tt_df)
+        except:
+            # Fallback seguro si falla el estilado
+            styled_data = df_disp
     else:
-        st.info("Por favor, seleccione una columna para agrupar.")
+        st.caption(get_text(lang, 'perf_mode_tooltips_off').format(n=MAX_ROWS_FOR_TOOLTIPS))
+
+    # Botones de selección masiva
+    c_sel_all, c_desel_all, _ = st.columns([0.15, 0.15, 0.7])
+    
+    if c_sel_all.button(get_text(lang, 'select_all_btn'), help="Select All"):
+        st.session_state.pending_selection = True
+        st.session_state.editor_key_ver += 1
+        st.rerun()
+        
+    if c_desel_all.button(get_text(lang, 'deselect_all_btn'), help="Select None"):
+        st.session_state.pending_selection = False
+        st.session_state.editor_key_ver += 1
+        st.rerun()
+
+    # --- DATA EDITOR PRINCIPAL ---
+    edited = st.data_editor(
+        styled_data, 
+        column_config=cc,
+        num_rows="dynamic",
+        key=f"ed_{st.session_state.editor_key_ver}",
+        height=600,
+        use_container_width=True
+    )
+
+    # --- Callbacks de Acciones CRUD ---
+    def cb_add():
+        """Añade una fila vacía al final."""
+        idx = int(pd.to_numeric(st.session_state.df_staging.index, errors='coerce').max() + 1)
+        row = {c: False if c=="Seleccionar" else "" for c in st.session_state.editor_state.columns}
+        st.session_state.editor_state = pd.concat([pd.DataFrame([row], index=[str(idx)]), st.session_state.editor_state])
+        st.session_state.editor_key_ver += 1
+        log_general_change("UI", "Add Row", f"Fila {idx}")
+        st.rerun()
+
+    def cb_del(idxs):
+        """Borra las filas seleccionadas."""
+        df = st.session_state.df_staging
+        drop = [str(i) for i in idxs if str(i) in df.index.astype(str)]
+        st.session_state.df_staging = df.drop(drop, errors='ignore')
+        log_general_change("UI", "Del Row", f"{len(drop)} filas")
+        st.session_state.editor_state = None
+        st.session_state.current_data_hash = None
+        st.success("Borrado."); st.rerun()
+
+    def cb_save():
+        """Guarda cambios del borrador al Staging, aplica reglas y recalcula estados."""
+        try:
+            ed = edited.copy()
+            if "Seleccionar" in ed: del ed["Seleccionar"]
+            
+            # Limpiar índices visuales
+            ed.index = ed.index.astype(str).str.replace("🚩 ", "")
+            # Restaurar nombres de columnas al inglés (Real)
+            ed.columns = [col_map.get(c,c) for c in ed.columns]
+            
+            st.session_state.df_staging.index = st.session_state.df_staging.index.astype(str)
+            st.session_state.df_staging.update(ed)
+            
+            # Detectar filas nuevas añadidas en el editor
+            new = ed.index.difference(st.session_state.df_staging.index)
+            if not new.empty: 
+                st.session_state.df_staging = pd.concat([st.session_state.df_staging, ed.loc[new]])
+            
+            # --- ACTUALIZACIÓN CRÍTICA ---
+            st.session_state.df_staging = apply_priority_rules(st.session_state.df_staging)
+            st.session_state.df_staging = recalculate_row_status(st.session_state.df_staging, lang)
+            
+            log_general_change("UI", "Save", "Borrador guardado")
+            st.session_state.editor_state = None; st.session_state.current_data_hash = None
+            st.success("Guardado."); st.rerun()
+        except Exception as e: st.error(e)
+
+    def cb_rev():
+        """Revierte cambios al último estado estable (Original/Commit)."""
+        st.session_state.df_staging = st.session_state.df_original.copy()
+        st.session_state.editor_state = None; st.session_state.current_data_hash = None
+        log_general_change("UI", "Revert", "Revertido")
+        st.rerun()
+
+    def cb_com():
+        """Hace commit del estado actual como el nuevo punto de restauración."""
+        st.session_state.df_original = st.session_state.df_staging.copy()
+        log_general_change("UI", "Commit", "Estable guardado")
+        st.success("Hecho.")
+
+    # Detección de filas seleccionadas
+    sel_idxs = []
+    if "Seleccionar" in edited.columns:
+        # Extraer índices reales limpiando banderas visuales
+        sel_idxs = pd.to_numeric(edited[edited["Seleccionar"]].index.astype(str).str.replace("🚩 ", ""), errors='coerce').dropna().unique()
+
+    # Barra de acciones para selección
+    if len(sel_idxs) > 0:
+        st.info(f"✅ {len(sel_idxs)} seleccionados.")
+        c1, c2, _ = st.columns([0.2,0.2,0.6])
+        if c1.button("✏️ Editar"): modal_bulk_edit(sel_idxs, col_map, lang)
+        if c2.button("🗑️ Borrar", type="primary"): cb_del(sel_idxs)
+        st.markdown("---")
+
+    # Botonera Inferior Principal
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.button(get_text(lang, 'add_row_button'), on_click=cb_add)
+    c2.button(get_text(lang, 'save_changes_button'), on_click=cb_save, type="primary")
+    c3.button(get_text(lang, 'commit_changes_button'), on_click=cb_com)
+    c4.button(get_text(lang, 'reset_changes_button'), on_click=cb_rev)
+    if c5.button("🔍 Buscar/Reemplazar"): modal_find_replace(col_map, lang)
+
+    # Atajos de Teclado (Hotkeys)
+    if hotkeys.pressed("save_draft"): cb_save()
+    if hotkeys.pressed("commit_changes"): cb_com()
+    if hotkeys.pressed("add_row"): cb_add()
+    if hotkeys.pressed("revert_stable"): cb_rev()
+
+    st.markdown("---")
+    # Descarga de lo que se ve en pantalla
+    st.download_button(get_text(lang, 'download_excel_simple'), to_excel(edited), "filtro.xlsx")
+
+
+def render_detailed_view(lang, df_filtered, df_master, col_map, all_cols):
+    """Prepara los datos y configuraciones para la Vista Detallada."""
+    cols_show = [c for c in st.session_state.columnas_visibles if c in df_filtered.columns]
+    if not cols_show: st.warning(get_text(lang, 'warning_select_cols')); return 
+
+    # Mapeo para ordenamiento
+    prio_map = {"🚩 Maxima Prioridad": 4, "Maxima Prioridad": 4, "Alta": 3, "Media": 2, "Minima": 1}
+    
+    # Opciones de ordenamiento
+    opts = [get_text(lang, 'sort_opt_original'), get_text(lang, 'sort_opt_max_min'), get_text(lang, 'sort_opt_min_max')]
+    sort_opt = st.radio(get_text(lang, 'sort_label'), opts, horizontal=True)
+    st.markdown("---")
+
+    # Aplicar ordenamiento
+    df_v = df_filtered.copy()
+    if sort_opt != get_text(lang, 'sort_opt_original') and 'Priority' in df_v.columns:
+        asc = (sort_opt == get_text(lang, 'sort_opt_min_max'))
+        df_v['_s'] = df_v['Priority'].map(prio_map).fillna(0)
+        scols = ['_s']
+        sascs = [asc]
+        if 'Invoice Date Age' in df_v.columns: scols.append('Invoice Date Age'); sascs.append(False)
+        df_v = df_v.sort_values(by=scols, ascending=sascs).drop(columns=['_s'])
+
+    # Preparar columnas visibles
+    df_v = df_v[cols_show].copy()
+    if "Seleccionar" not in df_v.columns: df_v.insert(0, "Seleccionar", False)
+    
+    # Traducir columnas para visualización
+    df_disp = df_v.copy()
+    df_disp.columns = [translate_column(lang, c) if c != "Seleccionar" else c for c in df_disp.columns]
+    
+    # --- STICKY COLUMN: REORDENAMIENTO DE COLUMNAS ---
+    # Para simular "Fijar Prioridad", la movemos a la posición 1 (después de "Seleccionar")
+    # Streamlit congela automáticamente el índice. Como esto es una columna de datos,
+    # ponerla al principio es la mejor aproximación nativa.
+    current_cols = list(df_disp.columns)
+    prio_col_name = translate_column(lang, "Priority")
+    
+    if prio_col_name in current_cols:
+        # Quitamos "Seleccionar" y "Priority" de donde estén
+        other_cols = [c for c in current_cols if c != "Seleccionar" and c != prio_col_name]
+        # Reconstruimos: Seleccionar -> Prioridad -> Resto
+        new_order = ["Seleccionar", prio_col_name] + other_cols
+        df_disp = df_disp[new_order]
+
+    # Marcar visualmente filas de alta prioridad en el índice
+    if 'Priority' in df_filtered.columns:
+        hi = df_filtered.loc[df_disp.index, 'Priority'].astype(str).str.contains("Maxima")
+        df_disp.index = np.where(hi, "🚩 " + df_disp.index.astype(str), df_disp.index.astype(str))
+
+    # Configuración de tipos de columna (Column Config)
+    cc = {"Seleccionar": st.column_config.CheckboxColumn("☑️", width="small")}
+    for cui in df_disp.columns:
+        if cui == "Seleccionar": continue
+        cen = col_map.get(cui, cui)
+        # Si tiene autocompletado, usar Selectbox
+        if cen in st.session_state.autocomplete_options:
+            cc[cui] = st.column_config.SelectboxColumn(f"{cui} 🔽", options=sorted(st.session_state.autocomplete_options[cen]))
+        # Si parece fecha, forzar texto para evitar conversiones erróneas
+        elif "Date" in cen and "Age" not in cen:
+            cc[cui] = st.column_config.TextColumn(f"{cui}", help="YYYY-MM-DD")
+
+    # Generar hash único para estado del editor
+    h_data = hash((json.dumps(st.session_state.filtros_activos, default=str), tuple(st.session_state.columnas_visibles), sort_opt))
+
+    # Renderizar fragmento
+    render_editor_fragment(df_disp, col_map, lang, cc, h_data, st.session_state.df_staging)
+
+
+def render_grouped_view(lang, df, col_map, all_cols):
+    """Renderiza la tabla pivotada/agrupada de resumen."""
+    st.markdown(f"## {get_text(lang, 'group_by_header')}")
+    
+    # Opciones de agrupación
+    opts = [translate_column(lang, c) for c in ["Vendor Name", "Status", "Pay Group", "Priority"] if c in all_cols]
+    gui = st.selectbox(get_text(lang, 'group_by_select'), opts)
+    gen = col_map.get(gui, gui)
+    
+    if gen:
+        d = df.copy()
+        # Asegurar tipos numéricos para agregación
+        for c in ['Total', 'Invoice Date Age']: 
+            if c in d: d[c] = pd.to_numeric(d[c], errors='coerce')
+            
+        agg = {'Total': ['sum','count','mean']}
+        if 'Invoice Date Age' in d: agg['Invoice Date Age'] = ['mean']
+        
+        # Crear agrupación
+        res = d.groupby(gen).agg(agg)
+        res.columns = ['_'.join(c).strip() for c in res.columns]
+        
+        st.dataframe(res, use_container_width=True)
+        st.download_button(get_text(lang, 'download_button_short'), to_excel(res), "agrupado.xlsx")

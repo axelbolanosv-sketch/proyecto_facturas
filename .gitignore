@@ -43,3 +43,8 @@ desktop.ini
 .vscode/
 # PyCharm
 .idea/
+
+# Ignorar secretos de Streamlit
+.streamlit/secrets.toml
+.streamlit/
+*.toml
